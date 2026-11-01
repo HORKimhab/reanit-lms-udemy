@@ -3,7 +3,10 @@ use std::sync::Arc;
 use anyhow::Context;
 use reanit_api::{
     config::Config,
-    infra::{clock::SystemClock, health::PgRedisProbe, mailer::SmtpMailer, postgres::PgStore},
+    infra::{
+        clock::SystemClock, health::PgRedisProbe, mailer::SmtpMailer, postgres::PgStore,
+        storage::Storage,
+    },
     routes,
     state::AppState,
 };
@@ -42,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
     let store = Arc::new(PgStore::new(db.clone()));
     let mailer = Arc::new(SmtpMailer::new(&config.smtp)?);
+    let storage = Arc::new(Storage::new(config.s3.clone()));
     let addr = format!("{}:{}", config.host, config.port);
 
     let state = AppState {
@@ -56,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
         mailer,
         clock: Arc::new(SystemClock),
         health: Arc::new(PgRedisProbe { db, redis }),
+        storage,
     };
     let app = routes::build(state);
 

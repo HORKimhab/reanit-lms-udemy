@@ -13,12 +13,13 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use http_body_util::BodyExt;
 use reanit_api::{
     auth::store::{RefreshToken, RefreshTokenRepo, VerificationTokenRepo},
-    config::{Config, SmtpConfig},
+    config::{Config, S3Config, SmtpConfig},
     error::{AppError, AppResult},
     infra::{
         clock::Clock,
         health::HealthProbe,
         mailer::{Email, Mailer},
+        storage::Storage,
     },
     modules::{
         categories::{Category, CategoryRepo},
@@ -489,11 +490,22 @@ pub fn test_config() -> Config {
             password: None,
             from: "test@example.com".into(),
         },
+        s3: S3Config {
+            endpoint: "http://localhost:9000".into(),
+            region: "us-east-1".into(),
+            bucket: "reanit-media".into(),
+            access_key: "test-access".into(),
+            secret_key: "test-secret".into(),
+            public_url: "http://cdn.test/reanit-media".into(),
+            path_style: true,
+        },
     }
 }
 
 impl TestApp {
     pub fn new() -> Self {
+        let config = test_config();
+        let storage = Arc::new(Storage::new(config.s3.clone()));
         let users = Arc::new(MemUsers::default());
         let categories = Arc::new(MemCategories::default());
         let mailer = Arc::new(CapturingMailer::default());
@@ -501,7 +513,7 @@ impl TestApp {
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         )));
         let state = AppState {
-            config: Arc::new(test_config()),
+            config: Arc::new(config),
             users: users.clone(),
             categories: categories.clone(),
             instructor_profiles: Arc::new(MemInstructorProfiles::default()),
@@ -512,6 +524,7 @@ impl TestApp {
             mailer: mailer.clone(),
             clock: clock.clone(),
             health: Arc::new(OkProbe),
+            storage,
         };
         Self {
             router: routes::build(state),

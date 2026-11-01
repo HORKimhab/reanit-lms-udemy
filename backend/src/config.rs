@@ -16,6 +16,21 @@ pub struct Config {
     /// Set the `Secure` flag on auth cookies (true in production / HTTPS).
     pub cookie_secure: bool,
     pub smtp: SmtpConfig,
+    pub s3: S3Config,
+}
+
+#[derive(Clone, Debug)]
+pub struct S3Config {
+    /// e.g. `http://localhost:9000` (MinIO) or `https://<account>.r2.cloudflarestorage.com`.
+    pub endpoint: String,
+    pub region: String,
+    pub bucket: String,
+    pub access_key: String,
+    pub secret_key: String,
+    /// Base URL for publicly readable objects, e.g. `http://localhost:9000/reanit-media`.
+    pub public_url: String,
+    /// `endpoint/bucket/key` (MinIO, R2) instead of `bucket.endpoint/key`.
+    pub path_style: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +83,15 @@ impl Config {
                 username: std::env::var("SMTP_USERNAME").ok(),
                 password: std::env::var("SMTP_PASSWORD").ok(),
                 from: var_or("MAIL_FROM", "ReanIT <no-reply@reanit.local>"),
+            },
+            s3: S3Config {
+                endpoint: var_or("S3_ENDPOINT", "http://localhost:9000"),
+                region: var_or("S3_REGION", "us-east-1"),
+                bucket: var_or("S3_BUCKET", "reanit-media"),
+                access_key: var("S3_ACCESS_KEY")?,
+                secret_key: var("S3_SECRET_KEY")?,
+                public_url: var_or("S3_PUBLIC_URL", "http://localhost:9000/reanit-media"),
+                path_style: parse_or("S3_PATH_STYLE", true)?,
             },
         })
     }

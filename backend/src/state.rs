@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     auth::store::{RefreshTokenRepo, VerificationTokenRepo},
     config::Config,
-    infra::{clock::Clock, health::HealthProbe, mailer::Mailer},
+    infra::{clock::Clock, health::HealthProbe, mailer::Mailer, storage::Storage},
     modules::{
         categories::CategoryRepo, courses::repo::CourseRepo, curriculum::repo::CurriculumRepo,
         instructors::InstructorProfileRepo, users::repo::UserRepo,
@@ -25,4 +25,5 @@ pub struct AppState {
     pub mailer: Arc<dyn Mailer>,
     pub clock: Arc<dyn Clock>,
     pub health: Arc<dyn HealthProbe>,
+    pub storage: Arc<Storage>,
 }

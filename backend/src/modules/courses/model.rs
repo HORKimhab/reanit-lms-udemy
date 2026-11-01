@@ -110,6 +110,14 @@ impl Course {
     }
 }
 
+/// API representation: the course plus derived URLs.
+#[derive(Debug, Serialize)]
+pub struct CourseDto {
+    #[serde(flatten)]
+    pub course: Course,
+    pub thumbnail_url: Option<String>,
+}
+
 /// Lowercase ASCII words joined by `-`; non-ASCII titles fall back to "course".
 pub fn slugify(title: &str) -> String {
     let mut slug = String::new();

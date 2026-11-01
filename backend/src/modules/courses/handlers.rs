@@ -1,8 +1,13 @@
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use serde::Deserialize;
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    routing::{get, post, put},
+};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::model::{Course, CourseStatus, Currency, Level};
+use super::model::{Course, CourseDto, CourseStatus, Currency, Level};
 use crate::{
     auth::extractor::CurrentUser,
     error::{AppError, AppResult},
@@ -23,6 +28,24 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/courses", get(list_mine).post(create))
         .route("/courses/{id}", get(get_one).patch(update).delete(delete))
+        .route(
+            "/courses/{id}/thumbnail/upload-url",
+            post(thumbnail_upload_url),
+        )
+        .route("/courses/{id}/thumbnail", put(set_thumbnail))
+}
+
+const UPLOAD_URL_TTL_SECS: u32 = 900;
+
+pub fn to_dto(state: &AppState, course: Course) -> CourseDto {
+    let thumbnail_url = course
+        .thumbnail_key
+        .as_deref()
+        .map(|k| state.storage.public_url(k));
+    CourseDto {
+        course,
+        thumbnail_url,
+    }
 }
 
 /// Instructors (and admins) only.
@@ -113,7 +136,7 @@ async fn create(
     State(state): State<AppState>,
     current: CurrentUser,
     ApiJson(req): ApiJson<CreateCourse>,
-) -> AppResult<(StatusCode, Json<Course>)> {
+) -> AppResult<(StatusCode, Json<CourseDto>)> {
     let user = require_instructor(&current)?;
     let title = validate_title(&req.title)?;
     validate_category(&state, req.category_id).await?;
@@ -126,24 +149,30 @@ async fn create(
         state.clock.now(),
     );
     state.courses.insert(&course).await?;
-    Ok((StatusCode::CREATED, Json(course)))
+    Ok((StatusCode::CREATED, Json(to_dto(&state, course))))
 }
 
 async fn list_mine(
     State(state): State<AppState>,
     current: CurrentUser,
-) -> AppResult<Json<Vec<Course>>> {
+) -> AppResult<Json<Vec<CourseDto>>> {
     let user = require_instructor(&current)?;
-    Ok(Json(state.courses.list_by_instructor(user.id).await?))
+    let courses = state.courses.list_by_instructor(user.id).await?;
+    Ok(Json(
+        courses.into_iter().map(|c| to_dto(&state, c)).collect(),
+    ))
 }
 
 async fn get_one(
     State(state): State<AppState>,
     current: CurrentUser,
     ApiPath(id): ApiPath<Uuid>,
-) -> AppResult<Json<Course>> {
+) -> AppResult<Json<CourseDto>> {
     let user = require_instructor(&current)?;
-    Ok(Json(load_managed_course(&state, user, id).await?))
+    Ok(Json(to_dto(
+        &state,
+        load_managed_course(&state, user, id).await?,
+    )))
 }
 
 /// Partial update: only fields present in the body change.
@@ -166,7 +195,7 @@ async fn update(
     current: CurrentUser,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(req): ApiJson<UpdateCourse>,
-) -> AppResult<Json<Course>> {
+) -> AppResult<Json<CourseDto>> {
     let user = require_instructor(&current)?;
     let mut course = load_editable_course(&state, user, id).await?;
 
@@ -213,7 +242,7 @@ async fn update(
 
     course.updated_at = state.clock.now();
     state.courses.save(&course).await?;
-    Ok(Json(course))
+    Ok(Json(to_dto(&state, course)))
 }
 
 async fn delete(
@@ -230,4 +259,83 @@ async fn delete(
     }
     state.courses.delete(course.id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn thumbnail_extension(content_type: &str) -> Option<&'static str> {
+    match content_type {
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "image/webp" => Some("webp"),
+        _ => None,
+    }
+}
+
+#[derive(Deserialize)]
+struct UploadUrlRequest {
+    content_type: String,
+}
+
+#[derive(Serialize)]
+struct UploadUrlResponse {
+    upload_url: String,
+    key: String,
+    expires_in_secs: u32,
+}
+
+/// Step 1 of a thumbnail upload: the browser PUTs the file to `upload_url`,
+/// then calls `PUT /courses/{id}/thumbnail` with the returned key.
+async fn thumbnail_upload_url(
+    State(state): State<AppState>,
+    current: CurrentUser,
+    ApiPath(id): ApiPath<Uuid>,
+    ApiJson(req): ApiJson<UploadUrlRequest>,
+) -> AppResult<Json<UploadUrlResponse>> {
+    let user = require_instructor(&current)?;
+    let course = load_editable_course(&state, user, id).await?;
+    let ext = thumbnail_extension(&req.content_type).ok_or_else(|| {
+        AppError::BadRequest("thumbnail must be a JPEG, PNG or WebP image".into())
+    })?;
+
+    let key = format!("thumbnails/{}/{}.{ext}", course.id, Uuid::new_v4());
+    let upload_url = state
+        .storage
+        .presign_put(&key, state.clock.now(), UPLOAD_URL_TTL_SECS);
+    Ok(Json(UploadUrlResponse {
+        upload_url,
+        key,
+        expires_in_secs: UPLOAD_URL_TTL_SECS,
+    }))
+}
+
+/// Only keys issued for this course (`thumbnails/{course_id}/{uuid}.{ext}`) are accepted.
+fn is_thumbnail_key_for(course_id: Uuid, key: &str) -> bool {
+    let Some(file) = key.strip_prefix(&format!("thumbnails/{course_id}/")) else {
+        return false;
+    };
+    let Some((stem, ext)) = file.rsplit_once('.') else {
+        return false;
+    };
+    Uuid::parse_str(stem).is_ok() && matches!(ext, "jpg" | "png" | "webp")
+}
+
+#[derive(Deserialize)]
+struct SetThumbnail {
+    key: String,
+}
+
+async fn set_thumbnail(
+    State(state): State<AppState>,
+    current: CurrentUser,
+    ApiPath(id): ApiPath<Uuid>,
+    ApiJson(req): ApiJson<SetThumbnail>,
+) -> AppResult<Json<CourseDto>> {
+    let user = require_instructor(&current)?;
+    let mut course = load_editable_course(&state, user, id).await?;
+    if !is_thumbnail_key_for(course.id, &req.key) {
+        return Err(AppError::BadRequest("invalid thumbnail key".into()));
+    }
+    course.thumbnail_key = Some(req.key);
+    course.updated_at = state.clock.now();
+    state.courses.save(&course).await?;
+    Ok(Json(to_dto(&state, course)))
 }

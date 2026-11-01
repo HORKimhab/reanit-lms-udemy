@@ -1635,6 +1635,7 @@ dependencies = [
  "cookie",
  "dotenvy",
  "hex",
+ "hmac 0.13.0",
  "http-body-util",
  "jsonwebtoken",
  "lettre",
