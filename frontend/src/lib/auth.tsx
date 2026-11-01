@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const start = useCallback((session: Session) => {
+  const applySession = useCallback((session: Session) => {
     setAccessToken(session.access_token);
     setUser(session.user);
     return session.user;
@@ -36,16 +36,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       setUser,
-      login: async (email, password) => start(await post<Session>("/auth/login", { email, password })),
+      login: async (email, password) => applySession(await post<Session>("/auth/login", { email, password })),
       register: async (name, email, password) =>
-        start(await post<Session>("/auth/register", { name, email, password })),
+        applySession(await post<Session>("/auth/register", { name, email, password })),
       logout: async () => {
         await post("/auth/logout").catch(() => undefined);
         setAccessToken(null);
         setUser(null);
       },
     }),
-    [user, loading, start],
+    [user, loading, applySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

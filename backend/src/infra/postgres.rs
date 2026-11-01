@@ -209,17 +209,30 @@ impl RefreshTokenRepo for PgStore {
         .await?;
         Ok(())
     }
+
+    async fn delete(&self, id: Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM refresh_tokens WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl VerificationTokenRepo for PgStore {
-    async fn insert(
+    async fn replace_for_user(
         &self,
         user_id: Uuid,
         token_hash: &str,
         expires_at: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM email_verification_tokens WHERE user_id = $1 AND used_at IS NULL")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(
             "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, created_at)
              VALUES ($1, $2, $3, $4)",
@@ -228,9 +241,19 @@ impl VerificationTokenRepo for PgStore {
         .bind(token_hash)
         .bind(expires_at)
         .bind(now)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
+    }
+
+    async fn last_issued_at(&self, user_id: Uuid) -> AppResult<Option<DateTime<Utc>>> {
+        Ok(sqlx::query_scalar(
+            "SELECT max(created_at) FROM email_verification_tokens WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?)
     }
 
     async fn consume(&self, token_hash: &str, now: DateTime<Utc>) -> AppResult<Option<Uuid>> {

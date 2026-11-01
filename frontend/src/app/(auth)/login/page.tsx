@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AuthCard, FormError } from "@/components/auth/auth-card";
+import { safeNext } from "@/components/auth/guards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(String(form.get("email")), String(form.get("password")));
-      router.push("/");
+      router.push(safeNext());
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

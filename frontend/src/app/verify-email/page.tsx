@@ -14,6 +14,7 @@ function VerifyEmail() {
   const token = useSearchParams().get("token");
   const { user, setUser } = useAuth();
   const [status, setStatus] = useState<Status>(token ? "verifying" : "failed");
+  const [verified, setVerified] = useState<User | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
@@ -21,12 +22,17 @@ function VerifyEmail() {
     if (!token || started.current) return;
     started.current = true;
     post<User>("/auth/verify-email", { token })
-      .then((verified) => {
+      .then((u) => {
+        setVerified(u);
         setStatus("verified");
-        if (user?.id === verified.id) setUser(verified);
       })
       .catch(() => setStatus("failed"));
-  }, [token, user, setUser]);
+  }, [token]);
+
+  // The session may finish restoring after verification; sync it whenever both exist.
+  useEffect(() => {
+    if (verified && user?.id === verified.id && !user.email_verified) setUser(verified);
+  }, [verified, user, setUser]);
 
   if (status === "verifying") return <AuthCard title="Verifying your email…" />;
   if (status === "verified")

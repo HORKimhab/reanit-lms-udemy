@@ -109,10 +109,8 @@ impl RefreshTokenRepo for MemRefreshTokens {
         Ok(())
     }
     async fn find_by_hash(&self, hash: &str) -> AppResult<Option<RefreshToken>> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
+        let tokens = self.0.lock().unwrap();
+        Ok(tokens
             .iter()
             .find(|(h, _)| h == hash)
             .map(|(_, t)| t.clone()))
@@ -135,12 +133,17 @@ impl RefreshTokenRepo for MemRefreshTokens {
         }
         Ok(())
     }
+    async fn delete(&self, id: Uuid) -> AppResult<()> {
+        self.0.lock().unwrap().retain(|(_, t)| t.id != id);
+        Ok(())
+    }
 }
 
 struct MemVerification {
     hash: String,
     user_id: Uuid,
     expires_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
     used: bool,
 }
 
@@ -149,20 +152,31 @@ pub struct MemVerificationTokens(Mutex<Vec<MemVerification>>);
 
 #[async_trait]
 impl VerificationTokenRepo for MemVerificationTokens {
-    async fn insert(
+    async fn replace_for_user(
         &self,
         user_id: Uuid,
         hash: &str,
         expires_at: DateTime<Utc>,
-        _now: DateTime<Utc>,
+        now: DateTime<Utc>,
     ) -> AppResult<()> {
-        self.0.lock().unwrap().push(MemVerification {
+        let mut tokens = self.0.lock().unwrap();
+        tokens.retain(|t| t.user_id != user_id || t.used);
+        tokens.push(MemVerification {
             hash: hash.into(),
             user_id,
             expires_at,
+            created_at: now,
             used: false,
         });
         Ok(())
+    }
+    async fn last_issued_at(&self, user_id: Uuid) -> AppResult<Option<DateTime<Utc>>> {
+        let tokens = self.0.lock().unwrap();
+        Ok(tokens
+            .iter()
+            .filter(|t| t.user_id == user_id)
+            .map(|t| t.created_at)
+            .max())
     }
     async fn consume(&self, hash: &str, now: DateTime<Utc>) -> AppResult<Option<Uuid>> {
         let mut tokens = self.0.lock().unwrap();
@@ -177,12 +191,26 @@ impl VerificationTokenRepo for MemVerificationTokens {
 }
 
 #[derive(Default)]
-pub struct CapturingMailer(pub Mutex<Vec<Email>>);
+pub struct CapturingMailer {
+    pub sent: Mutex<Vec<Email>>,
+    /// When set, every send fails (simulates an SMTP outage).
+    pub failing: std::sync::atomic::AtomicBool,
+}
+
+impl CapturingMailer {
+    pub fn set_failing(&self, failing: bool) {
+        self.failing
+            .store(failing, std::sync::atomic::Ordering::SeqCst);
+    }
+}
 
 #[async_trait]
 impl Mailer for CapturingMailer {
     async fn send(&self, email: Email) -> AppResult<()> {
-        self.0.lock().unwrap().push(email);
+        if self.failing.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("smtp unavailable").into());
+        }
+        self.sent.lock().unwrap().push(email);
         Ok(())
     }
 }
@@ -367,7 +395,7 @@ impl TestApp {
 
     /// The verification token from the last email sent to `to`.
     pub fn last_verification_token(&self, to: &str) -> String {
-        let emails = self.mailer.0.lock().unwrap();
+        let emails = self.mailer.sent.lock().unwrap();
         let email = emails
             .iter()
             .rev()

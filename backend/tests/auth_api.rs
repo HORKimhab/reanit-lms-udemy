@@ -25,7 +25,7 @@ async fn register_creates_student_signs_in_and_sends_verification_email() {
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("Path=/api/v1/auth"));
 
-    let emails = app.mailer.0.lock().unwrap();
+    let emails = app.mailer.sent.lock().unwrap();
     assert_eq!(emails.len(), 1);
     assert_eq!(emails[0].to, "dara@example.com");
     assert!(
@@ -52,7 +52,7 @@ async fn register_rejects_invalid_input() {
         );
         assert_eq!(res.body["error"]["code"], "bad_request");
     }
-    assert!(app.mailer.0.lock().unwrap().is_empty());
+    assert!(app.mailer.sent.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -359,4 +359,84 @@ async fn logout_without_a_session_still_succeeds() {
         .request(axum::http::Method::POST, "/auth/logout", None, None, None)
         .await;
     assert_eq!(res.status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn registration_succeeds_even_if_the_verification_email_cannot_be_sent() {
+    let app = TestApp::new();
+    app.mailer.set_failing(true);
+
+    let res = app
+        .register("Dara", "dara@example.com", "correct horse battery")
+        .await;
+
+    assert_eq!(res.status, StatusCode::CREATED);
+    assert!(res.refresh_cookie().is_some());
+}
+
+#[tokio::test]
+async fn replaying_a_logged_out_refresh_token_does_not_end_other_sessions() {
+    let app = TestApp::new();
+    let laptop = app
+        .register("Dara", "dara@example.com", "correct horse battery")
+        .await
+        .refresh_cookie()
+        .unwrap();
+    let phone = app
+        .login("dara@example.com", "correct horse battery")
+        .await
+        .refresh_cookie()
+        .unwrap();
+
+    app.request(
+        axum::http::Method::POST,
+        "/auth/logout",
+        None,
+        None,
+        Some(&laptop),
+    )
+    .await;
+    assert_eq!(
+        refresh(&app, &laptop).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+
+    assert_eq!(refresh(&app, &phone).await.status, StatusCode::OK);
+}
+
+async fn resend(app: &TestApp, token: &str) -> common::TestResponse {
+    app.request(
+        axum::http::Method::POST,
+        "/auth/resend-verification",
+        None,
+        Some(token),
+        None,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn resending_verification_is_throttled_and_invalidates_older_links() {
+    let app = TestApp::new();
+    let token = app
+        .register("Dara", "dara@example.com", "correct horse battery")
+        .await
+        .access_token();
+    let first = app.last_verification_token("dara@example.com");
+
+    let too_soon = resend(&app, &token).await;
+    assert_eq!(too_soon.status, StatusCode::TOO_MANY_REQUESTS);
+
+    app.clock.advance(chrono::Duration::seconds(61));
+    assert_eq!(resend(&app, &token).await.status, StatusCode::NO_CONTENT);
+    let second = app.last_verification_token("dara@example.com");
+
+    let old = app
+        .post("/auth/verify-email", serde_json::json!({ "token": first }))
+        .await;
+    assert_eq!(old.status, StatusCode::BAD_REQUEST);
+    let new = app
+        .post("/auth/verify-email", serde_json::json!({ "token": second }))
+        .await;
+    assert_eq!(new.status, StatusCode::OK);
 }

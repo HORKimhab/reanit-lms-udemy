@@ -136,15 +136,10 @@ async fn refresh_tokens_revoke_once_and_revoke_all() {
     assert!(!store.revoke_if_active(token_a.id, t).await.unwrap());
 
     store.revoke_all_for_user(user.id, t).await.unwrap();
-    assert!(
-        store
-            .find_by_hash(&b)
-            .await
-            .unwrap()
-            .unwrap()
-            .revoked_at
-            .is_some()
-    );
+    let token_b = store.find_by_hash(&b).await.unwrap().unwrap();
+    assert!(token_b.revoked_at.is_some());
+    store.delete(token_b.id).await.unwrap();
+    assert!(store.find_by_hash(&b).await.unwrap().is_none());
     assert!(store.find_by_hash("unknown").await.unwrap().is_none());
 }
 
@@ -160,17 +155,40 @@ async fn verification_tokens_are_single_use_and_expire() {
         format!("v-{}", Uuid::new_v4()),
         format!("v-{}", Uuid::new_v4()),
     );
-    VerificationTokenRepo::insert(&store, user.id, &fresh, t + Duration::hours(24), t)
+    assert_eq!(store.last_issued_at(user.id).await.unwrap(), None);
+    store
+        .replace_for_user(user.id, &old, t + Duration::hours(24), t)
         .await
         .unwrap();
-    VerificationTokenRepo::insert(&store, user.id, &old, t + Duration::hours(24), t)
+    let later = t + Duration::minutes(5);
+    store
+        .replace_for_user(user.id, &fresh, later + Duration::hours(24), later)
         .await
         .unwrap();
+    assert_eq!(store.last_issued_at(user.id).await.unwrap(), Some(later));
 
-    assert_eq!(store.consume(&fresh, t).await.unwrap(), Some(user.id));
-    assert_eq!(store.consume(&fresh, t).await.unwrap(), None);
     assert_eq!(
-        store.consume(&old, t + Duration::hours(25)).await.unwrap(),
+        store.consume(&old, later).await.unwrap(),
+        None,
+        "replaced token is invalid"
+    );
+    assert_eq!(store.consume(&fresh, later).await.unwrap(), Some(user.id));
+    assert_eq!(
+        store.consume(&fresh, later).await.unwrap(),
+        None,
+        "single use"
+    );
+
+    let expiring = format!("v-{}", Uuid::new_v4());
+    store
+        .replace_for_user(user.id, &expiring, t + Duration::hours(24), t)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .consume(&expiring, t + Duration::hours(25))
+            .await
+            .unwrap(),
         None
     );
 }

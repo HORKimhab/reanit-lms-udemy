@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { post } from "@/lib/api";
+import { ApiError, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 export function VerifyEmailBanner() {
   const { user } = useAuth();
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error" | "wait">("idle");
   if (!user || user.email_verified) return null;
 
   async function resend() {
@@ -14,8 +14,8 @@ export function VerifyEmailBanner() {
     try {
       await post("/auth/resend-verification");
       setState("sent");
-    } catch {
-      setState("error");
+    } catch (err) {
+      setState(err instanceof ApiError && err.status === 429 ? "wait" : "error");
     }
   }
 
@@ -30,7 +30,11 @@ export function VerifyEmailBanner() {
           disabled={state === "sending"}
           className="font-medium underline disabled:opacity-50"
         >
-          {state === "error" ? "Failed, try again" : "Resend email"}
+          {state === "error"
+            ? "Failed, try again"
+            : state === "wait"
+              ? "Please wait a minute, then resend"
+              : "Resend email"}
         </button>
       )}
     </div>

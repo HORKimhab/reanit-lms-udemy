@@ -21,6 +21,7 @@ const REFRESH_COOKIE: &str = "refresh_token";
 const REFRESH_COOKIE_PATH: &str = "/api/v1/auth";
 const MIN_PASSWORD_LEN: usize = 8;
 const MAX_PASSWORD_LEN: usize = 128;
+const RESEND_COOLDOWN_SECS: i64 = 60;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -72,7 +73,11 @@ async fn register(
         )
         .await?;
 
-    send_verification_email(&state, &user).await?;
+    // The account exists either way; a mail outage must not turn sign-up into a
+    // 500 that the client then retries into a 409. The user can resend later.
+    if let Err(err) = send_verification_email(&state, &user).await {
+        tracing::error!(user_id = %user.id, error = ?err, "failed to send verification email");
+    }
     let (jar, body) = start_session(&state, jar, &user).await?;
     Ok((StatusCode::CREATED, jar, Json(body)))
 }
@@ -172,6 +177,12 @@ async fn resend_verification(
     if user.is_email_verified() {
         return Err(AppError::Conflict("email is already verified".into()));
     }
+    let last = state.verification_tokens.last_issued_at(user.id).await?;
+    if last.is_some_and(|at| state.clock.now() - at < Duration::seconds(RESEND_COOLDOWN_SECS)) {
+        return Err(AppError::TooManyRequests(format!(
+            "please wait {RESEND_COOLDOWN_SECS} seconds before requesting another email"
+        )));
+    }
     send_verification_email(&state, &user).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -218,7 +229,7 @@ async fn refresh(
     Ok((jar, Json(body)))
 }
 
-/// Idempotent: always clears the cookie, revoking the token if it is known.
+/// Idempotent: always clears the cookie, deleting the token if it is known.
 async fn logout(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -226,10 +237,7 @@ async fn logout(
     if let Some(cookie) = jar.get(REFRESH_COOKIE) {
         let hash = tokens::hash_token(cookie.value());
         if let Some(token) = state.refresh_tokens.find_by_hash(&hash).await? {
-            state
-                .refresh_tokens
-                .revoke_if_active(token.id, state.clock.now())
-                .await?;
+            state.refresh_tokens.delete(token.id).await?;
         }
     }
     let jar = jar.remove(Cookie::build(REFRESH_COOKIE).path(REFRESH_COOKIE_PATH));
@@ -287,7 +295,7 @@ async fn send_verification_email(state: &AppState, user: &User) -> AppResult<()>
     let expires_at = now + Duration::hours(state.config.email_verification_ttl_hours);
     state
         .verification_tokens
-        .insert(user.id, &tokens::hash_token(&token), expires_at, now)
+        .replace_for_user(user.id, &tokens::hash_token(&token), expires_at, now)
         .await?;
 
     let link = format!("{}/verify-email?token={token}", state.config.frontend_url);

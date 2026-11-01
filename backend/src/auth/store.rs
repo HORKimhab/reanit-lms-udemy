@@ -27,12 +27,16 @@ pub trait RefreshTokenRepo: Send + Sync {
     /// (so concurrent refreshes with the same token can't both succeed).
     async fn revoke_if_active(&self, id: Uuid, at: DateTime<Utc>) -> AppResult<bool>;
     async fn revoke_all_for_user(&self, user_id: Uuid, at: DateTime<Utc>) -> AppResult<()>;
+    /// Removes the token entirely (logout). A deleted token presented later is
+    /// simply unknown, unlike a revoked one which signals theft.
+    async fn delete(&self, id: Uuid) -> AppResult<()>;
 }
 
 /// Email verification tokens, stored only as SHA-256 hashes.
 #[async_trait]
 pub trait VerificationTokenRepo: Send + Sync {
-    async fn insert(
+    /// Stores a new token for the user, invalidating any unused older ones.
+    async fn replace_for_user(
         &self,
         user_id: Uuid,
         token_hash: &str,
@@ -42,4 +46,6 @@ pub trait VerificationTokenRepo: Send + Sync {
     /// Marks the token used and returns its user id, if it exists, is unused and
     /// has not expired at `now`. Single use.
     async fn consume(&self, token_hash: &str, now: DateTime<Utc>) -> AppResult<Option<Uuid>>;
+    /// When the user's most recent token was issued, if any.
+    async fn last_issued_at(&self, user_id: Uuid) -> AppResult<Option<DateTime<Utc>>>;
 }
