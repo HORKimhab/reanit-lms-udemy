@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { VerifyEmailBanner } from "@/components/auth/verify-email-banner";
-import { UserMenu } from "./user-menu";
+import { TeachLink, UserMenu } from "./user-menu";
 
 export function SiteHeader() {
   return (
@@ -18,9 +18,7 @@ export function SiteHeader() {
         <form action="/courses" className="flex-1">
           <Input name="q" placeholder="Search for anything" className="rounded-full" />
         </form>
-        <Link href="/teach" className="hidden text-sm text-muted-foreground hover:text-foreground md:block">
-          Teach on ReanIT
-        </Link>
+        <TeachLink />
         <UserMenu />
       </div>
       <VerifyEmailBanner />

@@ -55,3 +55,17 @@ export function UserMenu() {
     </>
   );
 }
+
+/** "Teach on ReanIT" for students and visitors; the dashboard link for instructors. */
+export function TeachLink() {
+  const { user } = useAuth();
+  const isInstructor = user?.role === "instructor" || user?.role === "admin";
+  return (
+    <Link
+      href={isInstructor ? "/instructor/courses" : "/teach"}
+      className="hidden text-sm text-muted-foreground hover:text-foreground md:block"
+    >
+      {isInstructor ? "Instructor" : "Teach on ReanIT"}
+    </Link>
+  );
+}

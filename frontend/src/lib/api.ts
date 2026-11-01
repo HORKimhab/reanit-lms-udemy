@@ -83,5 +83,68 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return parse<T>(res);
 }
 
-export const post = <T>(path: string, body?: unknown) =>
-  api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+const send =
+  (method: string) =>
+  <T>(path: string, body?: unknown) =>
+    api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+
+export const post = send("POST");
+export const put = send("PUT");
+export const patch = send("PATCH");
+export const del = send("DELETE");
+
+// ---------- domain types ----------
+
+export type Category = { id: string; parent_id: string | null; name: string; slug: string };
+
+export type CourseStatus = "draft" | "pending" | "published" | "rejected";
+export type Level = "all" | "beginner" | "intermediate" | "expert";
+export type Currency = "USD" | "KHR";
+
+export type Course = {
+  id: string;
+  instructor_id: string;
+  category_id: string | null;
+  title: string;
+  slug: string;
+  subtitle: string;
+  description: string;
+  level: Level;
+  language: string;
+  /** Minor units: USD cents, KHR riel. */
+  price_minor: number;
+  currency: Currency;
+  thumbnail_url: string | null;
+  outcomes: string[];
+  requirements: string[];
+  status: CourseStatus;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LectureKind = "video" | "article";
+
+export type Lecture = {
+  id: string;
+  section_id: string;
+  title: string;
+  kind: LectureKind;
+  position: number;
+  is_preview: boolean;
+  article_body: string;
+  duration_sec: number;
+  video_asset_id: string | null;
+};
+
+export type Section = { id: string; title: string; position: number; lectures: Lecture[] };
+
+export type InstructorProfile = { user_id: string; headline: string; bio: string; website: string | null };
+
+/** Formats a minor-unit amount, e.g. 1999 USD -> "$19.99", 40000 KHR -> "40,000៛". */
+export function formatPrice(minor: number, currency: Currency): string {
+  if (minor === 0) return "Free";
+  return currency === "USD"
+    ? `$${(minor / 100).toFixed(2)}`
+    : `${minor.toLocaleString("en-US")}៛`;
+}
