@@ -6,7 +6,7 @@ use reanit_api::infra::transcoder::{TranscodeOutput, Transcoder};
 
 use crate::video_api::{VideoCtx, setup};
 
-struct CannedTranscoder;
+pub struct CannedTranscoder;
 
 #[async_trait]
 impl Transcoder for CannedTranscoder {
@@ -30,7 +30,7 @@ impl Transcoder for CannedTranscoder {
 }
 
 /// A lecture with a ready video; returns the asset id.
-async fn ready_video(ctx: &VideoCtx) -> String {
+pub async fn ready_video(ctx: &VideoCtx) -> String {
     let asset = ctx.upload_and_attach().await;
     let asset = asset.as_str().unwrap().to_string();
     ctx.app
@@ -154,4 +154,128 @@ async fn only_people_allowed_to_watch_get_the_playlist() {
         .await;
     assert_eq!(missing.status, StatusCode::NOT_FOUND);
     let _ = Method::GET;
+}
+
+/// Makes the video lecture a free preview and publishes the course.
+async fn publish_with_preview(ctx: &VideoCtx, preview: bool) {
+    let app = &ctx.app;
+    let lecture = &ctx.video_lecture;
+    app.send(
+        Method::PATCH,
+        &format!("{}/lectures/{lecture}", ctx.base),
+        Some(serde_json::json!({ "is_preview": preview })),
+        &ctx.token,
+    )
+    .await;
+    // The setup's article lecture needs content before the course can be submitted.
+    app.send(
+        Method::PATCH,
+        &format!("{}/lectures/{}", ctx.base, ctx.article_lecture),
+        Some(serde_json::json!({ "article_body": "Hello" })),
+        &ctx.token,
+    )
+    .await;
+    crate::submit_api::complete_details(app, &ctx.token, &ctx.base).await;
+    let submitted = app
+        .send(
+            Method::POST,
+            &format!("{}/submit", ctx.base),
+            None,
+            &ctx.token,
+        )
+        .await;
+    assert_eq!(submitted.status, StatusCode::OK, "{:?}", submitted.body);
+    let admin = app.admin("admin@example.com").await;
+    let id = ctx.base.rsplit('/').next().unwrap();
+    app.send(
+        Method::POST,
+        &format!("/admin/courses/{id}/approve"),
+        None,
+        &admin,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn anyone_can_watch_a_free_preview_of_a_published_course() {
+    let ctx = setup().await;
+    let asset = ready_video(&ctx).await;
+    publish_with_preview(&ctx, true).await;
+
+    let anonymous = ctx
+        .app
+        .get_raw(&format!("/videos/{asset}/playlist/720p.m3u8"), None)
+        .await;
+    assert_eq!(anonymous.status, StatusCode::OK);
+    assert!(anonymous.text.contains("X-Amz-Signature="));
+
+    let student = ctx.app.verified_student("student@example.com").await;
+    let logged_in = ctx
+        .app
+        .get_raw(
+            &format!("/videos/{asset}/playlist/master.m3u8"),
+            Some(&student),
+        )
+        .await;
+    assert_eq!(logged_in.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn non_preview_lectures_still_require_access() {
+    let ctx = setup().await;
+    let asset = ready_video(&ctx).await;
+    publish_with_preview(&ctx, false).await;
+    let path = format!("/videos/{asset}/playlist/master.m3u8");
+
+    assert_eq!(
+        ctx.app.get_raw(&path, None).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    let student = ctx.app.verified_student("student@example.com").await;
+    assert_eq!(
+        ctx.app.get_raw(&path, Some(&student)).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn previews_of_unpublished_courses_are_private() {
+    let ctx = setup().await;
+    let asset = ready_video(&ctx).await;
+    ctx.app
+        .send(
+            Method::PATCH,
+            &format!("{}/lectures/{}", ctx.base, ctx.video_lecture),
+            Some(serde_json::json!({ "is_preview": true })),
+            &ctx.token,
+        )
+        .await;
+
+    let res = ctx
+        .app
+        .get_raw(&format!("/videos/{asset}/playlist/master.m3u8"), None)
+        .await;
+
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_invalid_token_is_rejected_even_for_previews() {
+    let ctx = setup().await;
+    let asset = ready_video(&ctx).await;
+    publish_with_preview(&ctx, true).await;
+
+    let res = ctx
+        .app
+        .get_raw(
+            &format!("/videos/{asset}/playlist/master.m3u8"),
+            Some("garbage"),
+        )
+        .await;
+
+    assert_eq!(
+        res.status,
+        StatusCode::UNAUTHORIZED,
+        "lets the client refresh its session"
+    );
 }

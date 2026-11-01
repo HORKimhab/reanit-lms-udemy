@@ -17,8 +17,8 @@ pub async fn setup() -> (TestApp, String, String) {
     (app, token, base)
 }
 
-/// Fills in everything a course needs to be submitted.
-pub async fn complete(app: &TestApp, token: &str, base: &str) {
+/// Landing-page details and thumbnail (no curriculum).
+pub async fn complete_details(app: &TestApp, token: &str, base: &str) {
     let patch = app
         .send(
             Method::PATCH,
@@ -48,6 +48,11 @@ pub async fn complete(app: &TestApp, token: &str, base: &str) {
         token,
     )
     .await;
+}
+
+/// Fills in everything a course needs to be submitted.
+pub async fn complete(app: &TestApp, token: &str, base: &str) {
+    complete_details(app, token, base).await;
     let section = app
         .send(
             Method::POST,

@@ -49,3 +49,24 @@ impl CurrentUser {
         }
     }
 }
+
+/// The user if a bearer token is present. A *missing* header yields `None`;
+/// a present but invalid/expired token is still rejected (401) so clients
+/// know to refresh their session.
+pub struct OptionalUser(pub Option<User>);
+
+impl FromRequestParts<AppState> for OptionalUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
+        if !parts
+            .headers
+            .contains_key(axum::http::header::AUTHORIZATION)
+        {
+            return Ok(OptionalUser(None));
+        }
+        CurrentUser::from_request_parts(parts, state)
+            .await
+            .map(|CurrentUser(u)| OptionalUser(Some(u)))
+    }
+}

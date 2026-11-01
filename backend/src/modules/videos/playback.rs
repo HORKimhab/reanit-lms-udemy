@@ -13,10 +13,13 @@ use uuid::Uuid;
 
 use super::model::{VideoAsset, VideoStatus};
 use crate::{
-    auth::extractor::CurrentUser,
+    auth::extractor::OptionalUser,
     error::{AppError, AppResult},
     extract::ApiPath,
-    modules::users::model::{Role, User},
+    modules::{
+        courses::model::CourseStatus,
+        users::model::{Role, User},
+    },
     state::AppState,
 };
 
@@ -27,24 +30,38 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/videos/{asset_id}/playlist/{name}", get(playlist))
 }
 
-/// Who may watch a video. For now: the course's instructor and admins.
-/// (Enrolled students and free previews arrive with enrollments.)
-async fn can_watch(state: &AppState, user: &User, asset: &VideoAsset) -> AppResult<bool> {
-    if user.role == Role::Admin {
-        return Ok(true);
-    }
+enum Access {
+    Allowed,
+    /// Not logged in, and the video isn't public.
+    LoginRequired,
+    Denied,
+}
+
+/// Who may watch a video: anyone for the free-preview lecture of a published
+/// course; otherwise the course's instructor and admins. (Enrolled students
+/// arrive with enrollments.)
+async fn access(state: &AppState, user: Option<&User>, asset: &VideoAsset) -> AppResult<Access> {
     let Some(lecture) = state.curriculum.find_lecture(asset.lecture_id).await? else {
-        return Ok(false);
+        return Ok(Access::Denied);
     };
     let Some(course) = state.courses.find(lecture.course_id).await? else {
-        return Ok(false);
+        return Ok(Access::Denied);
     };
-    Ok(course.instructor_id == user.id)
+
+    let is_current_video = lecture.video_asset_id == Some(asset.id);
+    if is_current_video && lecture.is_preview && course.status == CourseStatus::Published {
+        return Ok(Access::Allowed);
+    }
+    Ok(match user {
+        None => Access::LoginRequired,
+        Some(u) if u.role == Role::Admin || u.id == course.instructor_id => Access::Allowed,
+        Some(_) => Access::Denied,
+    })
 }
 
 async fn playlist(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
+    OptionalUser(user): OptionalUser,
     ApiPath((asset_id, name)): ApiPath<(Uuid, String)>,
 ) -> AppResult<Response> {
     let asset = state
@@ -52,8 +69,10 @@ async fn playlist(
         .find(asset_id)
         .await?
         .ok_or(AppError::NotFound)?;
-    if !can_watch(&state, &user, &asset).await? {
-        return Err(AppError::NotFound);
+    match access(&state, user.as_ref(), &asset).await? {
+        Access::Allowed => {}
+        Access::LoginRequired => return Err(AppError::Unauthorized),
+        Access::Denied => return Err(AppError::NotFound),
     }
     if asset.status != VideoStatus::Ready {
         return Err(AppError::Conflict("video is not ready yet".into()));
