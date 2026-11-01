@@ -7,3 +7,4 @@ pub mod health;
 pub mod instructors;
 pub mod me;
 pub mod users;
+pub mod videos;

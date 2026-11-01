@@ -23,6 +23,10 @@ use crate::{
             model::{NewUser, Role, User},
             repo::UserRepo,
         },
+        videos::{
+            model::{VideoAsset, VideoStatus},
+            repo::VideoAssetRepo,
+        },
     },
 };
 
@@ -733,5 +737,130 @@ impl CurriculumRepo for PgStore {
         }
         tx.commit().await?;
         Ok(())
+    }
+}
+
+macro_rules! video_columns {
+    () => {
+        "id, owner_id, lecture_id, raw_key, status, duration_sec, error, playlists, attempts, \
+         claimed_at, created_at, updated_at"
+    };
+}
+
+#[derive(FromRow)]
+struct VideoAssetRow {
+    id: Uuid,
+    owner_id: Uuid,
+    lecture_id: Uuid,
+    raw_key: String,
+    status: String,
+    duration_sec: i32,
+    error: Option<String>,
+    playlists: sqlx::types::Json<std::collections::BTreeMap<String, String>>,
+    attempts: i32,
+    claimed_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl TryFrom<VideoAssetRow> for VideoAsset {
+    type Error = AppError;
+    fn try_from(r: VideoAssetRow) -> AppResult<Self> {
+        Ok(VideoAsset {
+            id: r.id,
+            owner_id: r.owner_id,
+            lecture_id: r.lecture_id,
+            raw_key: r.raw_key,
+            status: parse_text::<VideoStatus>(&r.status)?,
+            duration_sec: r.duration_sec,
+            error: r.error,
+            playlists: r.playlists.0,
+            attempts: r.attempts,
+            claimed_at: r.claimed_at,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        })
+    }
+}
+
+#[async_trait]
+impl VideoAssetRepo for PgStore {
+    async fn insert(&self, a: &VideoAsset) -> AppResult<()> {
+        sqlx::query(concat!(
+            "INSERT INTO video_assets (",
+            video_columns!(),
+            ") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+        ))
+        .bind(a.id)
+        .bind(a.owner_id)
+        .bind(a.lecture_id)
+        .bind(&a.raw_key)
+        .bind(a.status.as_str())
+        .bind(a.duration_sec)
+        .bind(&a.error)
+        .bind(sqlx::types::Json(&a.playlists))
+        .bind(a.attempts)
+        .bind(a.claimed_at)
+        .bind(a.created_at)
+        .bind(a.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn find(&self, id: Uuid) -> AppResult<Option<VideoAsset>> {
+        let row: Option<VideoAssetRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            video_columns!(),
+            " FROM video_assets WHERE id = $1"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(VideoAsset::try_from).transpose()
+    }
+
+    async fn save(&self, a: &VideoAsset) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE video_assets SET status = $2, duration_sec = $3, error = $4, playlists = $5,
+                attempts = $6, claimed_at = $7, updated_at = $8
+             WHERE id = $1",
+        )
+        .bind(a.id)
+        .bind(a.status.as_str())
+        .bind(a.duration_sec)
+        .bind(&a.error)
+        .bind(sqlx::types::Json(&a.playlists))
+        .bind(a.attempts)
+        .bind(a.claimed_at)
+        .bind(a.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn claim_next(
+        &self,
+        now: DateTime<Utc>,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<Option<VideoAsset>> {
+        // SKIP LOCKED lets several workers poll the same queue safely.
+        let row: Option<VideoAssetRow> = sqlx::query_as(concat!(
+            "UPDATE video_assets SET claimed_at = $1, attempts = attempts + 1
+             WHERE id = (
+                SELECT id FROM video_assets
+                WHERE status = 'processing' AND (claimed_at IS NULL OR claimed_at < $2)
+                ORDER BY created_at
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+             )
+             RETURNING ",
+            video_columns!()
+        ))
+        .bind(now)
+        .bind(stale_before)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(VideoAsset::try_from).transpose()
     }
 }

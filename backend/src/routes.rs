@@ -24,7 +24,9 @@ pub fn build(state: AppState) -> Router {
         .nest("/admin", modules::admin::router())
         .nest(
             "/instructor",
-            modules::courses::router().merge(modules::curriculum::router()),
+            modules::courses::router()
+                .merge(modules::curriculum::router())
+                .merge(modules::videos::router()),
         );
 
     Router::new()

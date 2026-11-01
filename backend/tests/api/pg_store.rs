@@ -22,6 +22,10 @@ use reanit_api::{
             repo::{CurriculumRepo, SectionOrder},
         },
         instructors::{InstructorProfile, InstructorProfileRepo},
+        videos::{
+            model::{VideoAsset, VideoStatus},
+            repo::VideoAssetRepo,
+        },
     },
 };
 use uuid::Uuid;
@@ -273,7 +277,7 @@ async fn courses_round_trip_every_field() {
     course.status = CourseStatus::Rejected;
     course.rejection_reason = Some("Needs more content".into());
     course.thumbnail_key = Some("thumbnails/x.png".into());
-    store.save(&course).await.unwrap();
+    CourseRepo::save(&store, &course).await.unwrap();
 
     let found = CourseRepo::find(&store, course.id).await.unwrap().unwrap();
     assert_eq!(found.slug, course.slug);
@@ -358,4 +362,91 @@ async fn curriculum_reorders_atomically_and_cascades_deletes() {
         "lectures cascade"
     );
     assert_eq!(store.lectures(course.id).await.unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn video_jobs_are_claimed_once_and_reclaimed_when_stale() {
+    let Some(store) = store().await else { return };
+    let user = store
+        .create(new_user(&unique_email()), now())
+        .await
+        .unwrap();
+    let course = Course::new_draft(Uuid::new_v4(), user.id, "Rust".into(), None, now());
+    CourseRepo::insert(&store, &course).await.unwrap();
+    let section = Section {
+        id: Uuid::new_v4(),
+        course_id: course.id,
+        title: "S".into(),
+        position: 0,
+    };
+    store.insert_section(&section).await.unwrap();
+    let lecture = Lecture {
+        id: Uuid::new_v4(),
+        course_id: course.id,
+        section_id: section.id,
+        title: "V".into(),
+        kind: LectureKind::Video,
+        position: 0,
+        is_preview: false,
+        article_body: String::new(),
+        duration_sec: 0,
+        video_asset_id: None,
+    };
+    store.insert_lecture(&lecture).await.unwrap();
+
+    // Other tests share the queue, so start from a time far in the past and only
+    // look at our own asset.
+    let t = now() - Duration::days(3650);
+    let mut asset = VideoAsset {
+        id: Uuid::new_v4(),
+        owner_id: user.id,
+        lecture_id: lecture.id,
+        raw_key: "videos/raw/x.mp4".into(),
+        status: VideoStatus::Processing,
+        duration_sec: 0,
+        error: None,
+        playlists: Default::default(),
+        attempts: 0,
+        claimed_at: None,
+        created_at: t,
+        updated_at: t,
+    };
+    VideoAssetRepo::insert(&store, &asset).await.unwrap();
+
+    let claimed = store
+        .claim_next(t, t - Duration::minutes(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.id, asset.id);
+    assert_eq!(claimed.attempts, 1);
+    let again = store
+        .claim_next(t, t - Duration::minutes(30))
+        .await
+        .unwrap();
+    assert!(
+        again.is_none_or(|a| a.id != asset.id),
+        "a fresh claim is not handed out twice"
+    );
+
+    let later = t + Duration::hours(1);
+    let reclaimed = store
+        .claim_next(later, later - Duration::minutes(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reclaimed.id, asset.id);
+    assert_eq!(reclaimed.attempts, 2);
+
+    asset.status = VideoStatus::Ready;
+    asset
+        .playlists
+        .insert("master.m3u8".into(), "#EXTM3U".into());
+    VideoAssetRepo::save(&store, &asset).await.unwrap();
+    let found = VideoAssetRepo::find(&store, asset.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.status, VideoStatus::Ready);
+    assert_eq!(found.playlists["master.m3u8"], "#EXTM3U");
 }

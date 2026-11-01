@@ -1,6 +1,5 @@
-
-use axum::http::StatusCode;
 use crate::common::TestApp;
+use axum::http::StatusCode;
 
 #[tokio::test]
 async fn register_creates_student_signs_in_and_sends_verification_email() {

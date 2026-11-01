@@ -56,18 +56,30 @@ fn validate_title(title: &str) -> AppResult<String> {
     Ok(title)
 }
 
-async fn editable_course(state: &AppState, current: &CurrentUser, id: Uuid) -> AppResult<Course> {
+pub async fn editable_course(
+    state: &AppState,
+    current: &CurrentUser,
+    id: Uuid,
+) -> AppResult<Course> {
     load_editable_course(state, require_instructor(current)?, id).await
 }
 
-async fn section_of(state: &AppState, course: &Course, id: Uuid) -> AppResult<Section> {
+pub async fn managed_course(
+    state: &AppState,
+    current: &CurrentUser,
+    id: Uuid,
+) -> AppResult<Course> {
+    load_managed_course(state, require_instructor(current)?, id).await
+}
+
+pub async fn section_of(state: &AppState, course: &Course, id: Uuid) -> AppResult<Section> {
     match state.curriculum.find_section(id).await? {
         Some(s) if s.course_id == course.id => Ok(s),
         _ => Err(AppError::NotFound),
     }
 }
 
-async fn lecture_of(state: &AppState, course: &Course, id: Uuid) -> AppResult<Lecture> {
+pub async fn lecture_of(state: &AppState, course: &Course, id: Uuid) -> AppResult<Lecture> {
     match state.curriculum.find_lecture(id).await? {
         Some(l) if l.course_id == course.id => Ok(l),
         _ => Err(AppError::NotFound),

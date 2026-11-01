@@ -1,6 +1,5 @@
-
-use axum::http::{Method, StatusCode};
 use crate::common::TestApp;
+use axum::http::{Method, StatusCode};
 use serde_json::json;
 
 async fn setup() -> (TestApp, String, String) {

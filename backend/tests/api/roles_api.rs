@@ -1,6 +1,5 @@
-
-use axum::http::{Method, StatusCode};
 use crate::common::TestApp;
+use axum::http::{Method, StatusCode};
 use reanit_api::modules::users::{model::Role, repo::UserRepo};
 use serde_json::json;
 use uuid::Uuid;
@@ -16,7 +15,12 @@ async fn become_instructor(app: &TestApp, token: &str) -> crate::common::TestRes
     .await
 }
 
-async fn set_role(app: &TestApp, token: &str, user_id: &str, role: &str) -> crate::common::TestResponse {
+async fn set_role(
+    app: &TestApp,
+    token: &str,
+    user_id: &str,
+    role: &str,
+) -> crate::common::TestResponse {
     app.request(
         Method::PATCH,
         &format!("/admin/users/{user_id}/role"),

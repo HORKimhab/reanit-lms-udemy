@@ -12,3 +12,4 @@ mod roles_api;
 mod storage_presign;
 mod submit_api;
 mod thumbnail_api;
+mod video_api;

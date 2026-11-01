@@ -6,7 +6,7 @@ use crate::{
     infra::{clock::Clock, health::HealthProbe, mailer::Mailer, storage::Storage},
     modules::{
         categories::CategoryRepo, courses::repo::CourseRepo, curriculum::repo::CurriculumRepo,
-        instructors::InstructorProfileRepo, users::repo::UserRepo,
+        instructors::InstructorProfileRepo, users::repo::UserRepo, videos::repo::VideoAssetRepo,
     },
 };
 
@@ -20,6 +20,7 @@ pub struct AppState {
     pub instructor_profiles: Arc<dyn InstructorProfileRepo>,
     pub courses: Arc<dyn CourseRepo>,
     pub curriculum: Arc<dyn CurriculumRepo>,
+    pub video_assets: Arc<dyn VideoAssetRepo>,
     pub refresh_tokens: Arc<dyn RefreshTokenRepo>,
     pub verification_tokens: Arc<dyn VerificationTokenRepo>,
     pub mailer: Arc<dyn Mailer>,

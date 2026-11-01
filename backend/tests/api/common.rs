@@ -33,6 +33,10 @@ use reanit_api::{
             model::{NewUser, Role, User},
             repo::UserRepo,
         },
+        videos::{
+            model::{VideoAsset, VideoStatus},
+            repo::VideoAssetRepo,
+        },
     },
     routes,
     state::AppState,
@@ -419,6 +423,51 @@ impl CurriculumRepo for MemCurriculum {
     }
 }
 
+#[derive(Default)]
+pub struct MemVideoAssets(pub Mutex<Vec<VideoAsset>>);
+
+#[async_trait]
+impl VideoAssetRepo for MemVideoAssets {
+    async fn insert(&self, asset: &VideoAsset) -> AppResult<()> {
+        self.0.lock().unwrap().push(asset.clone());
+        Ok(())
+    }
+    async fn find(&self, id: Uuid) -> AppResult<Option<VideoAsset>> {
+        Ok(self.0.lock().unwrap().iter().find(|a| a.id == id).cloned())
+    }
+    async fn save(&self, asset: &VideoAsset) -> AppResult<()> {
+        for a in self
+            .0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|a| a.id == asset.id)
+        {
+            *a = asset.clone();
+        }
+        Ok(())
+    }
+    async fn claim_next(
+        &self,
+        now: DateTime<Utc>,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<Option<VideoAsset>> {
+        let mut assets = self.0.lock().unwrap();
+        let mut queue: Vec<_> = assets
+            .iter_mut()
+            .filter(|a| {
+                a.status == VideoStatus::Processing && a.claimed_at.is_none_or(|c| c < stale_before)
+            })
+            .collect();
+        queue.sort_by_key(|a| a.created_at);
+        Ok(queue.into_iter().next().map(|a| {
+            a.claimed_at = Some(now);
+            a.attempts += 1;
+            a.clone()
+        }))
+    }
+}
+
 struct OkProbe;
 
 #[async_trait]
@@ -434,6 +483,7 @@ pub struct TestApp {
     router: Router,
     pub users: Arc<MemUsers>,
     pub categories: Arc<MemCategories>,
+    pub video_assets: Arc<MemVideoAssets>,
     pub mailer: Arc<CapturingMailer>,
     pub clock: Arc<FakeClock>,
 }
@@ -508,6 +558,7 @@ impl TestApp {
         let storage = Arc::new(Storage::new(config.s3.clone()));
         let users = Arc::new(MemUsers::default());
         let categories = Arc::new(MemCategories::default());
+        let video_assets = Arc::new(MemVideoAssets::default());
         let mailer = Arc::new(CapturingMailer::default());
         let clock = Arc::new(FakeClock(Mutex::new(
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
@@ -519,6 +570,7 @@ impl TestApp {
             instructor_profiles: Arc::new(MemInstructorProfiles::default()),
             courses: Arc::new(MemCourses::default()),
             curriculum: Arc::new(MemCurriculum::default()),
+            video_assets: video_assets.clone(),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),
@@ -530,6 +582,7 @@ impl TestApp {
             router: routes::build(state),
             users,
             categories,
+            video_assets,
             mailer,
             clock,
         }
