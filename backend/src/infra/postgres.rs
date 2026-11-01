@@ -10,6 +10,10 @@ use crate::{
     error::{AppError, AppResult},
     modules::{
         categories::{Category, CategoryRepo},
+        courses::{
+            model::{Course, CourseStatus, Currency, Level},
+            repo::CourseRepo,
+        },
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
             model::{NewUser, Role, User},
@@ -360,5 +364,161 @@ impl InstructorProfileRepo for PgStore {
         .fetch_one(&self.pool)
         .await?;
         Ok(row.into())
+    }
+}
+
+macro_rules! course_columns {
+    () => {
+        "id, instructor_id, category_id, title, slug, subtitle, description, level, language, \
+         price_minor, currency, thumbnail_key, outcomes, requirements, status, rejection_reason, \
+         created_at, updated_at, published_at"
+    };
+}
+
+#[derive(FromRow)]
+struct CourseRow {
+    id: Uuid,
+    instructor_id: Uuid,
+    category_id: Option<Uuid>,
+    title: String,
+    slug: String,
+    subtitle: String,
+    description: String,
+    level: String,
+    language: String,
+    price_minor: i64,
+    currency: String,
+    thumbnail_key: Option<String>,
+    outcomes: Vec<String>,
+    requirements: Vec<String>,
+    status: String,
+    rejection_reason: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    published_at: Option<DateTime<Utc>>,
+}
+
+fn parse_text<T: std::str::FromStr<Err = String>>(s: &str) -> AppResult<T> {
+    s.parse().map_err(|e: String| anyhow::anyhow!(e).into())
+}
+
+impl TryFrom<CourseRow> for Course {
+    type Error = AppError;
+    fn try_from(r: CourseRow) -> AppResult<Self> {
+        Ok(Course {
+            id: r.id,
+            instructor_id: r.instructor_id,
+            category_id: r.category_id,
+            title: r.title,
+            slug: r.slug,
+            subtitle: r.subtitle,
+            description: r.description,
+            level: parse_text::<Level>(&r.level)?,
+            language: r.language,
+            price_minor: r.price_minor,
+            currency: parse_text::<Currency>(&r.currency)?,
+            thumbnail_key: r.thumbnail_key,
+            outcomes: r.outcomes,
+            requirements: r.requirements,
+            status: parse_text::<CourseStatus>(&r.status)?,
+            rejection_reason: r.rejection_reason,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            published_at: r.published_at,
+        })
+    }
+}
+
+#[async_trait]
+impl CourseRepo for PgStore {
+    async fn insert(&self, c: &Course) -> AppResult<()> {
+        sqlx::query(concat!(
+            "INSERT INTO courses (",
+            course_columns!(),
+            ") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)"
+        ))
+        .bind(c.id)
+        .bind(c.instructor_id)
+        .bind(c.category_id)
+        .bind(&c.title)
+        .bind(&c.slug)
+        .bind(&c.subtitle)
+        .bind(&c.description)
+        .bind(c.level.as_str())
+        .bind(&c.language)
+        .bind(c.price_minor)
+        .bind(c.currency.as_str())
+        .bind(&c.thumbnail_key)
+        .bind(&c.outcomes)
+        .bind(&c.requirements)
+        .bind(c.status.as_str())
+        .bind(&c.rejection_reason)
+        .bind(c.created_at)
+        .bind(c.updated_at)
+        .bind(c.published_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn find(&self, id: Uuid) -> AppResult<Option<Course>> {
+        let row: Option<CourseRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            " FROM courses WHERE id = $1"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(Course::try_from).transpose()
+    }
+
+    async fn list_by_instructor(&self, instructor_id: Uuid) -> AppResult<Vec<Course>> {
+        let rows: Vec<CourseRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            " FROM courses WHERE instructor_id = $1 ORDER BY created_at DESC"
+        ))
+        .bind(instructor_id)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Course::try_from).collect()
+    }
+
+    async fn save(&self, c: &Course) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE courses SET category_id = $2, title = $3, subtitle = $4, description = $5,
+                level = $6, language = $7, price_minor = $8, currency = $9, thumbnail_key = $10,
+                outcomes = $11, requirements = $12, status = $13, rejection_reason = $14,
+                updated_at = $15, published_at = $16
+             WHERE id = $1",
+        )
+        .bind(c.id)
+        .bind(c.category_id)
+        .bind(&c.title)
+        .bind(&c.subtitle)
+        .bind(&c.description)
+        .bind(c.level.as_str())
+        .bind(&c.language)
+        .bind(c.price_minor)
+        .bind(c.currency.as_str())
+        .bind(&c.thumbnail_key)
+        .bind(&c.outcomes)
+        .bind(&c.requirements)
+        .bind(c.status.as_str())
+        .bind(&c.rejection_reason)
+        .bind(c.updated_at)
+        .bind(c.published_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM courses WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }

@@ -21,7 +21,8 @@ pub fn build(state: AppState) -> Router {
         .merge(modules::categories::router())
         .nest("/auth", modules::auth::router())
         .nest("/me", modules::me::router())
-        .nest("/admin", modules::admin::router());
+        .nest("/admin", modules::admin::router())
+        .nest("/instructor", modules::courses::router());
 
     Router::new()
         .nest("/api/v1", api)

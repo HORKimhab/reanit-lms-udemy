@@ -22,6 +22,7 @@ use reanit_api::{
     },
     modules::{
         categories::{Category, CategoryRepo},
+        courses::{model::Course, repo::CourseRepo},
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
             model::{NewUser, Role, User},
@@ -277,6 +278,41 @@ impl InstructorProfileRepo for MemInstructorProfiles {
     }
 }
 
+#[derive(Default)]
+pub struct MemCourses(Mutex<Vec<Course>>);
+
+#[async_trait]
+impl CourseRepo for MemCourses {
+    async fn insert(&self, course: &Course) -> AppResult<()> {
+        self.0.lock().unwrap().push(course.clone());
+        Ok(())
+    }
+    async fn find(&self, id: Uuid) -> AppResult<Option<Course>> {
+        Ok(self.0.lock().unwrap().iter().find(|c| c.id == id).cloned())
+    }
+    async fn list_by_instructor(&self, instructor_id: Uuid) -> AppResult<Vec<Course>> {
+        let courses = self.0.lock().unwrap();
+        let mut mine: Vec<_> = courses
+            .iter()
+            .filter(|c| c.instructor_id == instructor_id)
+            .cloned()
+            .collect();
+        mine.sort_by_key(|c| std::cmp::Reverse(c.created_at));
+        Ok(mine)
+    }
+    async fn save(&self, course: &Course) -> AppResult<()> {
+        let mut courses = self.0.lock().unwrap();
+        if let Some(existing) = courses.iter_mut().find(|c| c.id == course.id) {
+            *existing = course.clone();
+        }
+        Ok(())
+    }
+    async fn delete(&self, id: Uuid) -> AppResult<()> {
+        self.0.lock().unwrap().retain(|c| c.id != id);
+        Ok(())
+    }
+}
+
 struct OkProbe;
 
 #[async_trait]
@@ -364,6 +400,7 @@ impl TestApp {
             users: users.clone(),
             categories: categories.clone(),
             instructor_profiles: Arc::new(MemInstructorProfiles::default()),
+            courses: Arc::new(MemCourses::default()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),
@@ -446,7 +483,63 @@ impl TestApp {
         .await
     }
 
-    /// The verification token from the last email sent to `to`.
+    pub async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        token: &str,
+    ) -> TestResponse {
+        self.request(method, path, body, Some(token), None).await
+    }
+
+    /// Registers and verifies a student; returns their access token.
+    pub async fn verified_student(&self, email: &str) -> String {
+        let token = self
+            .register("Dara Sok", email, "correct horse battery")
+            .await
+            .access_token();
+        let verification = self.last_verification_token(email);
+        self.post(
+            "/auth/verify-email",
+            serde_json::json!({ "token": verification }),
+        )
+        .await;
+        token
+    }
+
+    /// A verified user who has become an instructor; returns their access token.
+    pub async fn instructor(&self, email: &str) -> String {
+        let token = self.verified_student(email).await;
+        let res = self
+            .send(
+                Method::POST,
+                "/me/become-instructor",
+                Some(serde_json::json!({ "headline": "Instructor" })),
+                &token,
+            )
+            .await;
+        assert_eq!(
+            res.status,
+            StatusCode::OK,
+            "become instructor: {:?}",
+            res.body
+        );
+        token
+    }
+
+    /// A verified admin; returns their access token.
+    pub async fn admin(&self, email: &str) -> String {
+        let token = self.verified_student(email).await;
+        let user = self.users.find_by_email(email).await.unwrap().unwrap();
+        self.users.set_role(user.id, Role::Admin).await.unwrap();
+        token
+    }
+
+    pub fn category_id(&self) -> String {
+        self.categories.0[0].id.to_string()
+    }
+
     pub fn last_verification_token(&self, to: &str) -> String {
         let emails = self.mailer.sent.lock().unwrap();
         let email = emails

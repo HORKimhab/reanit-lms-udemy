@@ -5,7 +5,8 @@ use crate::{
     config::Config,
     infra::{clock::Clock, health::HealthProbe, mailer::Mailer},
     modules::{
-        categories::CategoryRepo, instructors::InstructorProfileRepo, users::repo::UserRepo,
+        categories::CategoryRepo, courses::repo::CourseRepo, instructors::InstructorProfileRepo,
+        users::repo::UserRepo,
     },
 };
 
@@ -17,6 +18,7 @@ pub struct AppState {
     pub users: Arc<dyn UserRepo>,
     pub categories: Arc<dyn CategoryRepo>,
     pub instructor_profiles: Arc<dyn InstructorProfileRepo>,
+    pub courses: Arc<dyn CourseRepo>,
     pub refresh_tokens: Arc<dyn RefreshTokenRepo>,
     pub verification_tokens: Arc<dyn VerificationTokenRepo>,
     pub mailer: Arc<dyn Mailer>,

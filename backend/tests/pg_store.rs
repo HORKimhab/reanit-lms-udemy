@@ -13,6 +13,10 @@ use reanit_api::{
     },
     modules::{
         categories::CategoryRepo,
+        courses::{
+            model::{Course, CourseStatus, Currency, Level},
+            repo::CourseRepo,
+        },
         instructors::{InstructorProfile, InstructorProfileRepo},
     },
 };
@@ -142,7 +146,7 @@ async fn refresh_tokens_revoke_once_and_revoke_all() {
     store.revoke_all_for_user(user.id, t).await.unwrap();
     let token_b = store.find_by_hash(&b).await.unwrap().unwrap();
     assert!(token_b.revoked_at.is_some());
-    store.delete(token_b.id).await.unwrap();
+    RefreshTokenRepo::delete(&store, token_b.id).await.unwrap();
     assert!(store.find_by_hash(&b).await.unwrap().is_none());
     assert!(store.find_by_hash("unknown").await.unwrap().is_none());
 }
@@ -239,4 +243,44 @@ async fn instructor_profiles_upsert() {
         .unwrap()
         .unwrap();
     assert_eq!(found.headline, "Rust dev");
+}
+
+#[tokio::test]
+async fn courses_round_trip_every_field() {
+    let Some(store) = store().await else { return };
+    let user = store
+        .create(new_user(&unique_email()), now())
+        .await
+        .unwrap();
+    let category = store.list().await.unwrap()[0].id;
+    let mut course = Course::new_draft(
+        Uuid::new_v4(),
+        user.id,
+        "Rust 101".into(),
+        Some(category),
+        now(),
+    );
+    CourseRepo::insert(&store, &course).await.unwrap();
+
+    course.level = Level::Expert;
+    course.currency = Currency::Khr;
+    course.price_minor = 40_000;
+    course.outcomes = vec!["One".into(), "Two".into()];
+    course.status = CourseStatus::Rejected;
+    course.rejection_reason = Some("Needs more content".into());
+    course.thumbnail_key = Some("thumbnails/x.png".into());
+    store.save(&course).await.unwrap();
+
+    let found = CourseRepo::find(&store, course.id).await.unwrap().unwrap();
+    assert_eq!(found.slug, course.slug);
+    assert_eq!(found.level, Level::Expert);
+    assert_eq!(found.currency, Currency::Khr);
+    assert_eq!(found.price_minor, 40_000);
+    assert_eq!(found.outcomes, vec!["One".to_string(), "Two".to_string()]);
+    assert_eq!(found.status, CourseStatus::Rejected);
+    assert_eq!(found.thumbnail_key.as_deref(), Some("thumbnails/x.png"));
+    assert_eq!(store.list_by_instructor(user.id).await.unwrap().len(), 1);
+
+    CourseRepo::delete(&store, course.id).await.unwrap();
+    assert!(CourseRepo::find(&store, course.id).await.unwrap().is_none());
 }

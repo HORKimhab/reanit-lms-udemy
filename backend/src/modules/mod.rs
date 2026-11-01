@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod categories;
+pub mod courses;
 pub mod health;
 pub mod instructors;
 pub mod me;
