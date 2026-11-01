@@ -8,7 +8,10 @@ use uuid::Uuid;
 use super::PgStore;
 use crate::{
     error::AppResult,
-    modules::enrollments::{Enrollment, EnrollmentRepo},
+    modules::{
+        cart::{SavedCourseRepo, SavedList},
+        enrollments::{Enrollment, EnrollmentRepo},
+    },
 };
 
 #[derive(FromRow)]
@@ -65,5 +68,65 @@ impl EnrollmentRepo for PgStore {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(Enrollment::from).collect())
+    }
+}
+
+#[async_trait]
+impl SavedCourseRepo for PgStore {
+    async fn add(
+        &self,
+        list: SavedList,
+        user_id: Uuid,
+        course_id: Uuid,
+        at: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let sql = match list {
+            SavedList::Cart => {
+                "INSERT INTO cart_items (user_id, course_id, added_at) VALUES ($1, $2, $3) \
+                 ON CONFLICT DO NOTHING"
+            }
+            SavedList::Wishlist => {
+                "INSERT INTO wishlist_items (user_id, course_id, added_at) VALUES ($1, $2, $3) \
+                 ON CONFLICT DO NOTHING"
+            }
+        };
+        sqlx::query(sql)
+            .bind(user_id)
+            .bind(course_id)
+            .bind(at)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn remove(&self, list: SavedList, user_id: Uuid, course_id: Uuid) -> AppResult<()> {
+        let sql = match list {
+            SavedList::Cart => "DELETE FROM cart_items WHERE user_id = $1 AND course_id = $2",
+            SavedList::Wishlist => {
+                "DELETE FROM wishlist_items WHERE user_id = $1 AND course_id = $2"
+            }
+        };
+        sqlx::query(sql)
+            .bind(user_id)
+            .bind(course_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn list(&self, list: SavedList, user_id: Uuid) -> AppResult<Vec<Uuid>> {
+        let sql = match list {
+            SavedList::Cart => {
+                "SELECT course_id FROM cart_items WHERE user_id = $1 ORDER BY added_at DESC"
+            }
+            SavedList::Wishlist => {
+                "SELECT course_id FROM wishlist_items WHERE user_id = $1 ORDER BY added_at DESC"
+            }
+        };
+        let rows: Vec<(Uuid,)> = sqlx::query_as(sql)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 }

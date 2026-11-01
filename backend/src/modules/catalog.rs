@@ -16,6 +16,7 @@ use crate::{
     error::{AppError, AppResult},
     extract::ApiPath,
     modules::{
+        cart::SavedList,
         courses::{
             model::{Course, Currency, Level},
             repo::{CatalogFilter, CatalogSort, PriceFilter},
@@ -238,9 +239,11 @@ struct CoursePage {
 }
 
 /// What the logged-in viewer has to do with this course.
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct Viewer {
     enrolled: bool,
+    in_cart: bool,
+    in_wishlist: bool,
 }
 
 async fn course_page(
@@ -289,12 +292,24 @@ async fn course_page(
         course.requirements.clone(),
     );
     let card = to_cards(&state, vec![course]).await?.remove(0);
-    let enrolled = match &viewer {
-        Some(u) => state.enrollments.is_enrolled(u.id, card.id).await?,
-        None => false,
+    let viewer = match &viewer {
+        Some(u) => Viewer {
+            enrolled: state.enrollments.is_enrolled(u.id, card.id).await?,
+            in_cart: state
+                .saved_courses
+                .list(SavedList::Cart, u.id)
+                .await?
+                .contains(&card.id),
+            in_wishlist: state
+                .saved_courses
+                .list(SavedList::Wishlist, u.id)
+                .await?
+                .contains(&card.id),
+        },
+        None => Viewer::default(),
     };
     Ok(Json(CoursePage {
-        viewer: Viewer { enrolled },
+        viewer,
         card,
         description,
         outcomes,

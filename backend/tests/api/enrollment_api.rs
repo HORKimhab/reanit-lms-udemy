@@ -8,14 +8,14 @@ use crate::{
     video_api::setup,
 };
 
-struct Shop {
-    app: TestApp,
-    instructor: String,
-    admin: String,
-    student: String,
+pub struct Shop {
+    pub app: TestApp,
+    pub instructor: String,
+    pub admin: String,
+    pub student: String,
 }
 
-async fn shop() -> Shop {
+pub async fn shop() -> Shop {
     let app = TestApp::new();
     let instructor = app.instructor("teacher@example.com").await;
     let admin = app.admin("admin@example.com").await;
@@ -29,11 +29,11 @@ async fn shop() -> Shop {
 }
 
 impl Shop {
-    async fn course(&self, title: &str, fields: Value) -> String {
+    pub async fn course(&self, title: &str, fields: Value) -> String {
         published_course(&self.app, &self.instructor, &self.admin, title, fields).await
     }
 
-    async fn enroll(&self, course_id: &str) -> crate::common::TestResponse {
+    pub async fn enroll(&self, course_id: &str) -> crate::common::TestResponse {
         self.app
             .send(
                 Method::POST,
@@ -44,7 +44,7 @@ impl Shop {
             .await
     }
 
-    async fn my_courses(&self) -> Value {
+    pub async fn my_courses(&self) -> Value {
         let res = self.app.get_authed("/me/courses", &self.student).await;
         assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
         res.body

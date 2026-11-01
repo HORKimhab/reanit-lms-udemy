@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/become-instructor", post(become_instructor))
         .route("/instructor-profile", get(get_profile).put(update_profile))
         .merge(crate::modules::enrollments::handlers::router())
+        .merge(crate::modules::cart::router())
 }
 
 /// Students with a verified email can start teaching by filling in a profile.

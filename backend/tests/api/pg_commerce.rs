@@ -54,3 +54,34 @@ async fn enrollments_are_idempotent_and_listed_newest_first() {
     assert!(store.is_enrolled(user, first.id).await.unwrap());
     assert!(!store.is_enrolled(Uuid::new_v4(), first.id).await.unwrap());
 }
+
+#[tokio::test]
+async fn cart_and_wishlist_are_separate_newest_first_lists() {
+    use reanit_api::modules::cart::{SavedCourseRepo, SavedList};
+    let Some(store) = store().await else { return };
+    let (user, a) = user_and_course(&store, 100).await;
+    let (_, b) = user_and_course(&store, 100).await;
+    let t0 = now();
+
+    store.add(SavedList::Cart, user, a.id, t0).await.unwrap();
+    store
+        .add(SavedList::Cart, user, b.id, t0 + Duration::seconds(1))
+        .await
+        .unwrap();
+    store
+        .add(SavedList::Cart, user, a.id, t0 + Duration::seconds(2))
+        .await
+        .unwrap();
+    store
+        .add(SavedList::Wishlist, user, a.id, t0)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.list(SavedList::Cart, user).await.unwrap(),
+        [b.id, a.id]
+    );
+    store.remove(SavedList::Cart, user, b.id).await.unwrap();
+    assert_eq!(store.list(SavedList::Cart, user).await.unwrap(), [a.id]);
+    assert_eq!(store.list(SavedList::Wishlist, user).await.unwrap(), [a.id]);
+}

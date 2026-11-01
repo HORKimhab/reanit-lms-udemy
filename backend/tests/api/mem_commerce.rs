@@ -4,9 +4,13 @@
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use reanit_api::{
     error::AppResult,
-    modules::enrollments::{Enrollment, EnrollmentRepo},
+    modules::{
+        cart::{SavedCourseRepo, SavedList},
+        enrollments::{Enrollment, EnrollmentRepo},
+    },
 };
 use uuid::Uuid;
 
@@ -46,5 +50,46 @@ impl EnrollmentRepo for MemEnrollments {
             .collect();
         mine.sort_by_key(|e| std::cmp::Reverse(e.enrolled_at));
         Ok(mine)
+    }
+}
+
+/// (list, user, course), most recently added first.
+#[derive(Default)]
+pub struct MemSavedCourses(Mutex<Vec<(SavedList, Uuid, Uuid)>>);
+
+#[async_trait]
+impl SavedCourseRepo for MemSavedCourses {
+    async fn add(
+        &self,
+        list: SavedList,
+        user_id: Uuid,
+        course_id: Uuid,
+        _at: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let mut all = self.0.lock().unwrap();
+        let entry = (list, user_id, course_id);
+        if !all.contains(&entry) {
+            all.insert(0, entry);
+        }
+        Ok(())
+    }
+
+    async fn remove(&self, list: SavedList, user_id: Uuid, course_id: Uuid) -> AppResult<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .retain(|e| *e != (list, user_id, course_id));
+        Ok(())
+    }
+
+    async fn list(&self, list: SavedList, user_id: Uuid) -> AppResult<Vec<Uuid>> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(l, u, _)| *l == list && *u == user_id)
+            .map(|(_, _, c)| *c)
+            .collect())
     }
 }

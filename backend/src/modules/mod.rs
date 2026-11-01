@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod cart;
 pub mod catalog;
 pub mod categories;
 pub mod courses;
