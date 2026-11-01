@@ -14,6 +14,10 @@ use crate::{
             model::{Course, CourseStatus, Currency, Level},
             repo::CourseRepo,
         },
+        curriculum::{
+            model::{Lecture, LectureKind, Section},
+            repo::{CurriculumRepo, SectionOrder},
+        },
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
             model::{NewUser, Role, User},
@@ -519,6 +523,215 @@ impl CourseRepo for PgStore {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+}
+
+#[derive(FromRow)]
+struct SectionRow {
+    id: Uuid,
+    course_id: Uuid,
+    title: String,
+    position: i32,
+}
+
+impl From<SectionRow> for Section {
+    fn from(r: SectionRow) -> Self {
+        Section {
+            id: r.id,
+            course_id: r.course_id,
+            title: r.title,
+            position: r.position,
+        }
+    }
+}
+
+macro_rules! lecture_columns {
+    () => {
+        "id, course_id, section_id, title, kind, position, is_preview, article_body, duration_sec, \
+         video_asset_id"
+    };
+}
+
+#[derive(FromRow)]
+struct LectureRow {
+    id: Uuid,
+    course_id: Uuid,
+    section_id: Uuid,
+    title: String,
+    kind: String,
+    position: i32,
+    is_preview: bool,
+    article_body: String,
+    duration_sec: i32,
+    video_asset_id: Option<Uuid>,
+}
+
+impl TryFrom<LectureRow> for Lecture {
+    type Error = AppError;
+    fn try_from(r: LectureRow) -> AppResult<Self> {
+        Ok(Lecture {
+            id: r.id,
+            course_id: r.course_id,
+            section_id: r.section_id,
+            title: r.title,
+            kind: parse_text::<LectureKind>(&r.kind)?,
+            position: r.position,
+            is_preview: r.is_preview,
+            article_body: r.article_body,
+            duration_sec: r.duration_sec,
+            video_asset_id: r.video_asset_id,
+        })
+    }
+}
+
+#[async_trait]
+impl CurriculumRepo for PgStore {
+    async fn sections(&self, course_id: Uuid) -> AppResult<Vec<Section>> {
+        let rows: Vec<SectionRow> = sqlx::query_as(
+            "SELECT id, course_id, title, position FROM sections WHERE course_id = $1 ORDER BY position",
+        )
+        .bind(course_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn lectures(&self, course_id: Uuid) -> AppResult<Vec<Lecture>> {
+        let rows: Vec<LectureRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            lecture_columns!(),
+            " FROM lectures WHERE course_id = $1 ORDER BY position"
+        ))
+        .bind(course_id)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Lecture::try_from).collect()
+    }
+
+    async fn find_section(&self, id: Uuid) -> AppResult<Option<Section>> {
+        let row: Option<SectionRow> =
+            sqlx::query_as("SELECT id, course_id, title, position FROM sections WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn find_lecture(&self, id: Uuid) -> AppResult<Option<Lecture>> {
+        let row: Option<LectureRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            lecture_columns!(),
+            " FROM lectures WHERE id = $1"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(Lecture::try_from).transpose()
+    }
+
+    async fn insert_section(&self, s: &Section) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO sections (id, course_id, title, position) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(s.id)
+        .bind(s.course_id)
+        .bind(&s.title)
+        .bind(s.position)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn save_section(&self, s: &Section) -> AppResult<()> {
+        sqlx::query("UPDATE sections SET title = $2, position = $3 WHERE id = $1")
+            .bind(s.id)
+            .bind(&s.title)
+            .bind(s.position)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn delete_section(&self, id: Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM sections WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn insert_lecture(&self, l: &Lecture) -> AppResult<()> {
+        sqlx::query(concat!(
+            "INSERT INTO lectures (",
+            lecture_columns!(),
+            ") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+        ))
+        .bind(l.id)
+        .bind(l.course_id)
+        .bind(l.section_id)
+        .bind(&l.title)
+        .bind(l.kind.as_str())
+        .bind(l.position)
+        .bind(l.is_preview)
+        .bind(&l.article_body)
+        .bind(l.duration_sec)
+        .bind(l.video_asset_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn save_lecture(&self, l: &Lecture) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE lectures SET section_id = $2, title = $3, position = $4, is_preview = $5,
+                article_body = $6, duration_sec = $7, video_asset_id = $8
+             WHERE id = $1",
+        )
+        .bind(l.id)
+        .bind(l.section_id)
+        .bind(&l.title)
+        .bind(l.position)
+        .bind(l.is_preview)
+        .bind(&l.article_body)
+        .bind(l.duration_sec)
+        .bind(l.video_asset_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn delete_lecture(&self, id: Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM lectures WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn reorder(&self, course_id: Uuid, order: &[SectionOrder]) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        for (s_pos, section) in order.iter().enumerate() {
+            sqlx::query("UPDATE sections SET position = $3 WHERE id = $1 AND course_id = $2")
+                .bind(section.section_id)
+                .bind(course_id)
+                .bind(s_pos as i32)
+                .execute(&mut *tx)
+                .await?;
+            for (l_pos, lecture_id) in section.lecture_ids.iter().enumerate() {
+                sqlx::query(
+                    "UPDATE lectures SET section_id = $3, position = $4
+                     WHERE id = $1 AND course_id = $2",
+                )
+                .bind(lecture_id)
+                .bind(course_id)
+                .bind(section.section_id)
+                .bind(l_pos as i32)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        tx.commit().await?;
         Ok(())
     }
 }

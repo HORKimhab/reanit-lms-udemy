@@ -26,7 +26,7 @@ pub fn router() -> Router<AppState> {
 }
 
 /// Instructors (and admins) only.
-fn require_instructor(current: &CurrentUser) -> AppResult<&User> {
+pub fn require_instructor(current: &CurrentUser) -> AppResult<&User> {
     match current.0.role {
         Role::Instructor | Role::Admin => Ok(&current.0),
         Role::Student => Err(AppError::Forbidden),

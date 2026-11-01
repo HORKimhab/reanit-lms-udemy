@@ -23,6 +23,10 @@ use reanit_api::{
     modules::{
         categories::{Category, CategoryRepo},
         courses::{model::Course, repo::CourseRepo},
+        curriculum::{
+            model::{Lecture, Section},
+            repo::{CurriculumRepo, SectionOrder},
+        },
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
             model::{NewUser, Role, User},
@@ -313,6 +317,107 @@ impl CourseRepo for MemCourses {
     }
 }
 
+#[derive(Default)]
+pub struct MemCurriculum {
+    sections: Mutex<Vec<Section>>,
+    lectures: Mutex<Vec<Lecture>>,
+}
+
+#[async_trait]
+impl CurriculumRepo for MemCurriculum {
+    async fn sections(&self, course_id: Uuid) -> AppResult<Vec<Section>> {
+        let sections = self.sections.lock().unwrap();
+        Ok(sections
+            .iter()
+            .filter(|s| s.course_id == course_id)
+            .cloned()
+            .collect())
+    }
+    async fn lectures(&self, course_id: Uuid) -> AppResult<Vec<Lecture>> {
+        let lectures = self.lectures.lock().unwrap();
+        Ok(lectures
+            .iter()
+            .filter(|l| l.course_id == course_id)
+            .cloned()
+            .collect())
+    }
+    async fn find_section(&self, id: Uuid) -> AppResult<Option<Section>> {
+        Ok(self
+            .sections
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.id == id)
+            .cloned())
+    }
+    async fn find_lecture(&self, id: Uuid) -> AppResult<Option<Lecture>> {
+        Ok(self
+            .lectures
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|l| l.id == id)
+            .cloned())
+    }
+    async fn insert_section(&self, section: &Section) -> AppResult<()> {
+        self.sections.lock().unwrap().push(section.clone());
+        Ok(())
+    }
+    async fn save_section(&self, section: &Section) -> AppResult<()> {
+        for s in self
+            .sections
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|s| s.id == section.id)
+        {
+            *s = section.clone();
+        }
+        Ok(())
+    }
+    async fn delete_section(&self, id: Uuid) -> AppResult<()> {
+        self.sections.lock().unwrap().retain(|s| s.id != id);
+        self.lectures.lock().unwrap().retain(|l| l.section_id != id);
+        Ok(())
+    }
+    async fn insert_lecture(&self, lecture: &Lecture) -> AppResult<()> {
+        self.lectures.lock().unwrap().push(lecture.clone());
+        Ok(())
+    }
+    async fn save_lecture(&self, lecture: &Lecture) -> AppResult<()> {
+        for l in self
+            .lectures
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|l| l.id == lecture.id)
+        {
+            *l = lecture.clone();
+        }
+        Ok(())
+    }
+    async fn delete_lecture(&self, id: Uuid) -> AppResult<()> {
+        self.lectures.lock().unwrap().retain(|l| l.id != id);
+        Ok(())
+    }
+    async fn reorder(&self, _course_id: Uuid, order: &[SectionOrder]) -> AppResult<()> {
+        let mut sections = self.sections.lock().unwrap();
+        let mut lectures = self.lectures.lock().unwrap();
+        for (s_pos, so) in order.iter().enumerate() {
+            if let Some(s) = sections.iter_mut().find(|s| s.id == so.section_id) {
+                s.position = s_pos as i32;
+            }
+            for (l_pos, id) in so.lecture_ids.iter().enumerate() {
+                if let Some(l) = lectures.iter_mut().find(|l| l.id == *id) {
+                    l.section_id = so.section_id;
+                    l.position = l_pos as i32;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 struct OkProbe;
 
 #[async_trait]
@@ -401,6 +506,7 @@ impl TestApp {
             categories: categories.clone(),
             instructor_profiles: Arc::new(MemInstructorProfiles::default()),
             courses: Arc::new(MemCourses::default()),
+            curriculum: Arc::new(MemCurriculum::default()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),

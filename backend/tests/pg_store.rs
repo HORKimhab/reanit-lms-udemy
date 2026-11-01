@@ -17,6 +17,10 @@ use reanit_api::{
             model::{Course, CourseStatus, Currency, Level},
             repo::CourseRepo,
         },
+        curriculum::{
+            model::{Lecture, LectureKind, Section},
+            repo::{CurriculumRepo, SectionOrder},
+        },
         instructors::{InstructorProfile, InstructorProfileRepo},
     },
 };
@@ -283,4 +287,75 @@ async fn courses_round_trip_every_field() {
 
     CourseRepo::delete(&store, course.id).await.unwrap();
     assert!(CourseRepo::find(&store, course.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn curriculum_reorders_atomically_and_cascades_deletes() {
+    let Some(store) = store().await else { return };
+    let user = store
+        .create(new_user(&unique_email()), now())
+        .await
+        .unwrap();
+    let course = Course::new_draft(Uuid::new_v4(), user.id, "Rust".into(), None, now());
+    CourseRepo::insert(&store, &course).await.unwrap();
+
+    let section = |title: &str, position| Section {
+        id: Uuid::new_v4(),
+        course_id: course.id,
+        title: title.into(),
+        position,
+    };
+    let (s1, s2) = (section("One", 0), section("Two", 1));
+    store.insert_section(&s1).await.unwrap();
+    store.insert_section(&s2).await.unwrap();
+    let lecture = Lecture {
+        id: Uuid::new_v4(),
+        course_id: course.id,
+        section_id: s1.id,
+        title: "A".into(),
+        kind: LectureKind::Article,
+        position: 0,
+        is_preview: true,
+        article_body: "# Hi".into(),
+        duration_sec: 0,
+        video_asset_id: None,
+    };
+    store.insert_lecture(&lecture).await.unwrap();
+
+    store
+        .reorder(
+            course.id,
+            &[
+                SectionOrder {
+                    section_id: s2.id,
+                    lecture_ids: vec![lecture.id],
+                },
+                SectionOrder {
+                    section_id: s1.id,
+                    lecture_ids: vec![],
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+    let sections = store.sections(course.id).await.unwrap();
+    assert_eq!(
+        sections
+            .iter()
+            .map(|s| s.title.as_str())
+            .collect::<Vec<_>>(),
+        ["Two", "One"]
+    );
+    let moved = store.find_lecture(lecture.id).await.unwrap().unwrap();
+    assert_eq!(moved.section_id, s2.id);
+    assert_eq!(moved.kind, LectureKind::Article);
+    assert!(moved.is_preview);
+
+    store.delete_section(s2.id).await.unwrap();
+    assert!(
+        store.find_lecture(lecture.id).await.unwrap().is_none(),
+        "lectures cascade"
+    );
+    assert_eq!(store.lectures(course.id).await.unwrap().len(), 0);
 }

@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
         categories: store.clone(),
         instructor_profiles: store.clone(),
         courses: store.clone(),
+        curriculum: store.clone(),
         refresh_tokens: store.clone(),
         verification_tokens: store,
         mailer,
