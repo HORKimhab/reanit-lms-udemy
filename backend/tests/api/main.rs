@@ -4,6 +4,7 @@
 mod common;
 
 mod auth_api;
+mod catalog_api;
 mod courses_api;
 mod curriculum_api;
 mod instructor_api;

@@ -27,11 +27,11 @@ use reanit_api::{
         categories::{Category, CategoryRepo},
         courses::{
             model::{Course, CourseStatus},
-            repo::CourseRepo,
+            repo::{CatalogFilter, CatalogSort, CourseRepo, PriceFilter, usd_cents_equivalent},
         },
         curriculum::{
             model::{Lecture, Section},
-            repo::{CurriculumRepo, SectionOrder},
+            repo::{CurriculumRepo, LectureStats, SectionOrder},
         },
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
@@ -58,6 +58,14 @@ pub struct MemUsers(Mutex<Vec<User>>);
 
 #[async_trait]
 impl UserRepo for MemUsers {
+    async fn find_many(&self, ids: &[Uuid]) -> AppResult<Vec<User>> {
+        let users = self.0.lock().unwrap();
+        Ok(users
+            .iter()
+            .filter(|u| ids.contains(&u.id))
+            .cloned()
+            .collect())
+    }
     async fn create(&self, new: NewUser, now: DateTime<Utc>) -> AppResult<User> {
         let mut users = self.0.lock().unwrap();
         if users
@@ -266,6 +274,12 @@ impl Default for MemCategories {
     }
 }
 
+impl MemCategories {
+    pub fn list_ids(&self) -> Vec<String> {
+        self.0.iter().map(|c| c.id.to_string()).collect()
+    }
+}
+
 #[async_trait]
 impl CategoryRepo for MemCategories {
     async fn list(&self) -> AppResult<Vec<Category>> {
@@ -298,6 +312,53 @@ pub struct MemCourses(Mutex<Vec<Course>>);
 
 #[async_trait]
 impl CourseRepo for MemCourses {
+    async fn search_published(&self, f: &CatalogFilter) -> AppResult<(Vec<Course>, i64)> {
+        let courses = self.0.lock().unwrap();
+        let q = f.q.as_deref().map(str::to_lowercase);
+        let mut found: Vec<Course> = courses
+            .iter()
+            .filter(|c| c.status == CourseStatus::Published)
+            .filter(|c| {
+                q.as_deref().is_none_or(|q| {
+                    [&c.title, &c.subtitle, &c.description]
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(q))
+                })
+            })
+            .filter(|c| f.category_id.is_none_or(|id| c.category_id == Some(id)))
+            .filter(|c| f.level.is_none_or(|l| c.level == l))
+            .filter(|c| match f.price {
+                None => true,
+                Some(PriceFilter::Free) => c.price_minor == 0,
+                Some(PriceFilter::Paid) => c.price_minor > 0,
+            })
+            .cloned()
+            .collect();
+        found.sort_by_key(|c| std::cmp::Reverse(c.published_at));
+        match f.sort {
+            CatalogSort::PriceAsc => {
+                found.sort_by(|a, b| usd_cents_equivalent(a).total_cmp(&usd_cents_equivalent(b)))
+            }
+            CatalogSort::PriceDesc => {
+                found.sort_by(|a, b| usd_cents_equivalent(b).total_cmp(&usd_cents_equivalent(a)))
+            }
+            CatalogSort::Relevance | CatalogSort::Newest => {}
+        }
+        let total = found.len() as i64;
+        let page = found
+            .into_iter()
+            .skip(f.offset as usize)
+            .take(f.limit as usize)
+            .collect();
+        Ok((page, total))
+    }
+    async fn find_published_by_slug(&self, slug: &str) -> AppResult<Option<Course>> {
+        let courses = self.0.lock().unwrap();
+        Ok(courses
+            .iter()
+            .find(|c| c.slug == slug && c.status == CourseStatus::Published)
+            .cloned())
+    }
     async fn insert(&self, course: &Course) -> AppResult<()> {
         self.0.lock().unwrap().push(course.clone());
         Ok(())
@@ -346,6 +407,24 @@ pub struct MemCurriculum {
 
 #[async_trait]
 impl CurriculumRepo for MemCurriculum {
+    async fn stats(
+        &self,
+        course_ids: &[Uuid],
+    ) -> AppResult<std::collections::HashMap<Uuid, LectureStats>> {
+        let mut stats = std::collections::HashMap::new();
+        for l in self
+            .lectures
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| course_ids.contains(&l.course_id))
+        {
+            let s: &mut LectureStats = stats.entry(l.course_id).or_default();
+            s.lecture_count += 1;
+            s.duration_sec += l.duration_sec as i64;
+        }
+        Ok(stats)
+    }
     async fn sections(&self, course_id: Uuid) -> AppResult<Vec<Section>> {
         let sections = self.sections.lock().unwrap();
         Ok(sections

@@ -19,6 +19,7 @@ pub fn build(state: AppState) -> Router {
     let api = Router::new()
         .merge(modules::health::router())
         .merge(modules::categories::router())
+        .merge(modules::catalog::router())
         .merge(modules::videos::playback::router())
         .nest("/auth", modules::auth::router())
         .nest("/me", modules::me::router())

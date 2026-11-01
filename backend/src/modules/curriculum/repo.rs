@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -8,6 +10,12 @@ use crate::error::AppResult;
 pub struct SectionOrder {
     pub section_id: Uuid,
     pub lecture_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LectureStats {
+    pub lecture_count: i64,
+    pub duration_sec: i64,
 }
 
 #[async_trait]
@@ -25,4 +33,6 @@ pub trait CurriculumRepo: Send + Sync {
     async fn delete_lecture(&self, id: Uuid) -> AppResult<()>;
     /// Atomically applies a complete, already-validated ordering.
     async fn reorder(&self, course_id: Uuid, order: &[SectionOrder]) -> AppResult<()>;
+    /// Lecture count and total duration per course (missing = no lectures).
+    async fn stats(&self, course_ids: &[Uuid]) -> AppResult<HashMap<Uuid, LectureStats>>;
 }

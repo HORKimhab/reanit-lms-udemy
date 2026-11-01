@@ -12,11 +12,11 @@ use crate::{
         categories::{Category, CategoryRepo},
         courses::{
             model::{Course, CourseStatus, Currency, Level},
-            repo::CourseRepo,
+            repo::{CatalogFilter, CourseRepo, KHR_PER_USD, PriceFilter},
         },
         curriculum::{
             model::{Lecture, LectureKind, Section},
-            repo::{CurriculumRepo, SectionOrder},
+            repo::{CurriculumRepo, LectureStats, SectionOrder},
         },
         instructors::{InstructorProfile, InstructorProfileRepo},
         users::{
@@ -127,6 +127,18 @@ impl UserRepo for PgStore {
                 .fetch_optional(&self.pool)
                 .await?,
         )
+    }
+
+    async fn find_many(&self, ids: &[Uuid]) -> AppResult<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            user_columns!(),
+            " FROM users WHERE id = ANY($1)"
+        ))
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(User::try_from).collect()
     }
 
     async fn mark_email_verified(&self, id: Uuid, at: DateTime<Utc>) -> AppResult<Option<User>> {
@@ -406,6 +418,21 @@ struct CourseRow {
     published_at: Option<DateTime<Utc>>,
 }
 
+#[derive(FromRow)]
+struct CourseSearchRow {
+    #[sqlx(flatten)]
+    course: CourseRow,
+    total: i64,
+}
+
+/// Escapes LIKE wildcards in user input.
+fn escape_like(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 fn parse_text<T: std::str::FromStr<Err = String>>(s: &str) -> AppResult<T> {
     s.parse().map_err(|e: String| anyhow::anyhow!(e).into())
 }
@@ -540,6 +567,70 @@ impl CourseRepo for PgStore {
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(Course::try_from).collect()
+    }
+
+    async fn search_published(&self, f: &CatalogFilter) -> AppResult<(Vec<Course>, i64)> {
+        let q = f.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+        // Substring fallback (ILIKE) for words full-text search can't split, e.g. Khmer.
+        let like = q.map(|q| format!("%{}%", escape_like(q)));
+        let rows: Vec<CourseSearchRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            ", count(*) OVER () AS total
+             FROM courses
+             WHERE status = 'published'
+               AND ($1::text IS NULL
+                    OR search_vector @@ websearch_to_tsquery('simple', $1)
+                    OR title ILIKE $2 OR subtitle ILIKE $2)
+               AND ($3::uuid IS NULL OR category_id = $3)
+               AND ($4::text IS NULL OR level = $4)
+               AND ($5::text IS NULL OR ($5 = 'free' AND price_minor = 0)
+                                     OR ($5 = 'paid' AND price_minor > 0))
+             ORDER BY
+               CASE WHEN $6 = 'relevance'
+                    THEN ts_rank(search_vector, websearch_to_tsquery('simple', coalesce($1, '')))
+               END DESC NULLS LAST,
+               CASE WHEN $6 = 'price_asc'
+                    THEN CASE currency WHEN 'KHR' THEN price_minor * 100.0 / $9 ELSE price_minor END
+               END ASC,
+               CASE WHEN $6 = 'price_desc'
+                    THEN CASE currency WHEN 'KHR' THEN price_minor * 100.0 / $9 ELSE price_minor END
+               END DESC,
+               published_at DESC, id
+             LIMIT $7 OFFSET $8"
+        ))
+        .bind(q)
+        .bind(like)
+        .bind(f.category_id)
+        .bind(f.level.map(|l| l.as_str()))
+        .bind(f.price.map(|p| match p {
+            PriceFilter::Free => "free",
+            PriceFilter::Paid => "paid",
+        }))
+        .bind(f.sort.as_str())
+        .bind(f.limit)
+        .bind(f.offset)
+        .bind(KHR_PER_USD as f64)
+        .fetch_all(&self.pool)
+        .await?;
+        let total = rows.first().map_or(0, |r| r.total);
+        let courses = rows
+            .into_iter()
+            .map(|r| Course::try_from(r.course))
+            .collect::<AppResult<_>>()?;
+        Ok((courses, total))
+    }
+
+    async fn find_published_by_slug(&self, slug: &str) -> AppResult<Option<Course>> {
+        let row: Option<CourseRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            " FROM courses WHERE slug = $1 AND status = 'published'"
+        ))
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(Course::try_from).transpose()
     }
 }
 
@@ -749,6 +840,31 @@ impl CurriculumRepo for PgStore {
         }
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn stats(
+        &self,
+        course_ids: &[Uuid],
+    ) -> AppResult<std::collections::HashMap<Uuid, LectureStats>> {
+        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT course_id, count(*), coalesce(sum(duration_sec), 0)::bigint
+             FROM lectures WHERE course_id = ANY($1) GROUP BY course_id",
+        )
+        .bind(course_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, lecture_count, duration_sec)| {
+                (
+                    id,
+                    LectureStats {
+                        lecture_count,
+                        duration_sec,
+                    },
+                )
+            })
+            .collect())
     }
 }
 

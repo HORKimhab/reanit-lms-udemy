@@ -15,7 +15,7 @@ use reanit_api::{
         categories::CategoryRepo,
         courses::{
             model::{Course, CourseStatus, Currency, Level},
-            repo::CourseRepo,
+            repo::{CatalogFilter, CatalogSort, CourseRepo, PriceFilter},
         },
         curriculum::{
             model::{Lecture, LectureKind, Section},
@@ -449,4 +449,109 @@ async fn video_jobs_are_claimed_once_and_reclaimed_when_stale() {
         .unwrap();
     assert_eq!(found.status, VideoStatus::Ready);
     assert_eq!(found.playlists["master.m3u8"], "#EXTM3U");
+}
+
+#[tokio::test]
+async fn published_courses_can_be_searched_filtered_sorted_and_paged() {
+    let Some(store) = store().await else { return };
+    let user = store
+        .create(new_user(&unique_email()), now())
+        .await
+        .unwrap();
+    // A unique word keeps this test independent of other rows in the database.
+    let tag = format!("zq{}", &Uuid::new_v4().simple().to_string()[..8]);
+    let publish = |title: String, currency: Currency, price: i64, level: Level| {
+        let mut c = Course::new_draft(Uuid::new_v4(), user.id, title, None, now());
+        c.subtitle = tag.clone();
+        c.currency = currency;
+        c.price_minor = price;
+        c.level = level;
+        c.status = CourseStatus::Published;
+        c.published_at = Some(now());
+        c
+    };
+    let usd = publish(
+        "Rust ten dollars".into(),
+        Currency::Usd,
+        1000,
+        Level::Beginner,
+    );
+    let khr = publish("ភាសា Rust ខ្មែរ".into(), Currency::Khr, 20000, Level::Expert);
+    let free = publish("Free intro".into(), Currency::Usd, 0, Level::Beginner);
+    let mut draft = publish("Hidden draft".into(), Currency::Usd, 0, Level::All);
+    draft.status = CourseStatus::Draft;
+    for c in [&usd, &khr, &free, &draft] {
+        CourseRepo::insert(&store, c).await.unwrap();
+    }
+
+    let filter = |sort, price, level| CatalogFilter {
+        q: Some(tag.clone()),
+        category_id: None,
+        level,
+        price,
+        sort,
+        limit: 10,
+        offset: 0,
+    };
+    let titles =
+        |r: (Vec<Course>, i64)| (r.0.into_iter().map(|c| c.title).collect::<Vec<_>>(), r.1);
+
+    let (asc, total) = titles(
+        store
+            .search_published(&filter(CatalogSort::PriceAsc, None, None))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(total, 3, "drafts are excluded");
+    assert_eq!(
+        asc,
+        ["Free intro", "ភាសា Rust ខ្មែរ", "Rust ten dollars"],
+        "KHR converted for sorting"
+    );
+
+    let (paid, _) = titles(
+        store
+            .search_published(&filter(
+                CatalogSort::Newest,
+                Some(PriceFilter::Paid),
+                Some(Level::Beginner),
+            ))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(paid, ["Rust ten dollars"]);
+
+    // Khmer substring (no word boundaries for full-text search) still matches.
+    let mut khmer = filter(CatalogSort::Relevance, None, None);
+    khmer.q = Some("ខ្មែរ".into());
+    let (found, _) = titles(store.search_published(&khmer).await.unwrap());
+    assert!(found.contains(&"ភាសា Rust ខ្មែរ".to_string()));
+
+    let mut paged = filter(CatalogSort::PriceAsc, None, None);
+    paged.limit = 1;
+    paged.offset = 2;
+    assert_eq!(
+        titles(store.search_published(&paged).await.unwrap()),
+        (vec!["Rust ten dollars".to_string()], 3)
+    );
+
+    assert!(
+        store
+            .find_published_by_slug(&usd.slug)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        store
+            .find_published_by_slug(&draft.slug)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(store.find_many(&[user.id]).await.unwrap().len(), 1);
+    assert!(
+        store.stats(&[usd.id]).await.unwrap().is_empty(),
+        "no lectures yet"
+    );
 }
