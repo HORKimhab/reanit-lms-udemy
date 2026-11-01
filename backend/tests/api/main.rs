@@ -2,12 +2,15 @@
 //! smaller on disk than one binary per file).
 
 mod common;
+mod mem_commerce;
 
 mod auth_api;
 mod catalog_api;
 mod courses_api;
 mod curriculum_api;
+mod enrollment_api;
 mod instructor_api;
+mod pg_commerce;
 mod pg_store;
 mod playback_api;
 mod review_api;

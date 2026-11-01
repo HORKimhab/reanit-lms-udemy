@@ -58,6 +58,8 @@ pub struct CatalogFilter {
 pub trait CourseRepo: Send + Sync {
     async fn insert(&self, course: &Course) -> AppResult<()>;
     async fn find(&self, id: Uuid) -> AppResult<Option<Course>>;
+    /// Any order; missing ids are skipped.
+    async fn find_many(&self, ids: &[Uuid]) -> AppResult<Vec<Course>>;
     /// Newest first.
     async fn list_by_instructor(&self, instructor_id: Uuid) -> AppResult<Vec<Course>>;
     /// Persists every mutable field of an existing course.

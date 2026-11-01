@@ -157,7 +157,7 @@ async fn only_people_allowed_to_watch_get_the_playlist() {
 }
 
 /// Makes the video lecture a free preview and publishes the course.
-async fn publish_with_preview(ctx: &VideoCtx, preview: bool) {
+pub async fn publish_with_preview(ctx: &VideoCtx, preview: bool) {
     let app = &ctx.app;
     let lecture = &ctx.video_lecture;
     app.send(

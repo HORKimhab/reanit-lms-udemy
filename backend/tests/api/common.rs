@@ -48,6 +48,8 @@ use reanit_api::{
     worker::VideoWorker,
 };
 use serde_json::Value;
+
+pub use crate::mem_commerce::*;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -312,6 +314,15 @@ pub struct MemCourses(Mutex<Vec<Course>>);
 
 #[async_trait]
 impl CourseRepo for MemCourses {
+    async fn find_many(&self, ids: &[Uuid]) -> AppResult<Vec<Course>> {
+        let courses = self.0.lock().unwrap();
+        Ok(courses
+            .iter()
+            .filter(|c| ids.contains(&c.id))
+            .cloned()
+            .collect())
+    }
+
     async fn search_published(&self, f: &CatalogFilter) -> AppResult<(Vec<Course>, i64)> {
         let courses = self.0.lock().unwrap();
         let q = f.q.as_deref().map(str::to_lowercase);
@@ -704,6 +715,7 @@ impl TestApp {
             courses: Arc::new(MemCourses::default()),
             curriculum: Arc::new(MemCurriculum::default()),
             video_assets: video_assets.clone(),
+            enrollments: Arc::new(MemEnrollments::default()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),

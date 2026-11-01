@@ -508,6 +508,18 @@ impl CourseRepo for PgStore {
         row.map(Course::try_from).transpose()
     }
 
+    async fn find_many(&self, ids: &[Uuid]) -> AppResult<Vec<Course>> {
+        let rows: Vec<CourseRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            " FROM courses WHERE id = ANY($1)"
+        ))
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Course::try_from).collect()
+    }
+
     async fn list_by_instructor(&self, instructor_id: Uuid) -> AppResult<Vec<Course>> {
         let rows: Vec<CourseRow> = sqlx::query_as(concat!(
             "SELECT ",
@@ -992,3 +1004,6 @@ impl VideoAssetRepo for PgStore {
         row.map(VideoAsset::try_from).transpose()
     }
 }
+
+// Commerce adapters live in a child module so they can reuse the column macros above.
+mod commerce;

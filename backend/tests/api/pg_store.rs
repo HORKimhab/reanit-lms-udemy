@@ -30,7 +30,7 @@ use reanit_api::{
 };
 use uuid::Uuid;
 
-async fn store() -> Option<PgStore> {
+pub async fn store() -> Option<PgStore> {
     let Ok(url) = std::env::var("DATABASE_URL") else {
         eprintln!("DATABASE_URL not set; skipping Postgres tests");
         return None;
@@ -45,11 +45,11 @@ async fn store() -> Option<PgStore> {
     Some(PgStore::new(pool))
 }
 
-fn unique_email() -> String {
+pub fn unique_email() -> String {
     format!("user-{}@example.com", Uuid::new_v4())
 }
 
-fn new_user(email: &str) -> NewUser {
+pub fn new_user(email: &str) -> NewUser {
     NewUser {
         name: "Dara".into(),
         email: email.into(),
@@ -58,7 +58,7 @@ fn new_user(email: &str) -> NewUser {
 }
 
 /// Postgres stores microseconds; truncate so round-tripped values compare equal.
-fn now() -> chrono::DateTime<Utc> {
+pub fn now() -> chrono::DateTime<Utc> {
     Utc::now()
         .duration_trunc(Duration::microseconds(1))
         .unwrap()
@@ -549,7 +549,17 @@ async fn published_courses_can_be_searched_filtered_sorted_and_paged() {
             .unwrap()
             .is_none()
     );
-    assert_eq!(store.find_many(&[user.id]).await.unwrap().len(), 1);
+    assert_eq!(
+        UserRepo::find_many(&store, &[user.id]).await.unwrap().len(),
+        1
+    );
+    assert_eq!(
+        CourseRepo::find_many(&store, &[usd.id, draft.id])
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
     assert!(
         store.stats(&[usd.id]).await.unwrap().is_empty(),
         "no lectures yet"

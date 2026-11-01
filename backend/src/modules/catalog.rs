@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    auth::extractor::OptionalUser,
     error::{AppError, AppResult},
     extract::ApiPath,
     modules::{
@@ -233,10 +234,18 @@ struct CoursePage {
     requirements: Vec<String>,
     instructor: PublicInstructor,
     curriculum: Vec<PublicSection>,
+    viewer: Viewer,
+}
+
+/// What the logged-in viewer has to do with this course.
+#[derive(Serialize)]
+struct Viewer {
+    enrolled: bool,
 }
 
 async fn course_page(
     State(state): State<AppState>,
+    OptionalUser(viewer): OptionalUser,
     ApiPath(slug): ApiPath<String>,
 ) -> AppResult<Json<CoursePage>> {
     let course = state
@@ -280,7 +289,12 @@ async fn course_page(
         course.requirements.clone(),
     );
     let card = to_cards(&state, vec![course]).await?.remove(0);
+    let enrolled = match &viewer {
+        Some(u) => state.enrollments.is_enrolled(u.id, card.id).await?,
+        None => false,
+    };
     Ok(Json(CoursePage {
+        viewer: Viewer { enrolled },
         card,
         description,
         outcomes,

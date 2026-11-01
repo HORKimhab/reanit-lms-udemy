@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod categories;
 pub mod courses;
 pub mod curriculum;
+pub mod enrollments;
 pub mod health;
 pub mod instructors;
 pub mod me;

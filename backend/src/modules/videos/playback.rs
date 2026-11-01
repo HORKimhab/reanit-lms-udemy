@@ -38,8 +38,7 @@ enum Access {
 }
 
 /// Who may watch a video: anyone for the free-preview lecture of a published
-/// course; otherwise the course's instructor and admins. (Enrolled students
-/// arrive with enrollments.)
+/// course; otherwise enrolled students, the course's instructor and admins.
 async fn access(state: &AppState, user: Option<&User>, asset: &VideoAsset) -> AppResult<Access> {
     let Some(lecture) = state.curriculum.find_lecture(asset.lecture_id).await? else {
         return Ok(Access::Denied);
@@ -55,6 +54,7 @@ async fn access(state: &AppState, user: Option<&User>, asset: &VideoAsset) -> Ap
     Ok(match user {
         None => Access::LoginRequired,
         Some(u) if u.role == Role::Admin || u.id == course.instructor_id => Access::Allowed,
+        Some(u) if state.enrollments.is_enrolled(u.id, course.id).await? => Access::Allowed,
         Some(_) => Access::Denied,
     })
 }
