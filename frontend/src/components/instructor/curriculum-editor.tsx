@@ -9,8 +9,19 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, del, patch, post, put, type Lecture, type LectureKind, type Section } from "@/lib/api";
+import {
+  ApiError,
+  del,
+  formatDuration,
+  patch,
+  post,
+  put,
+  type Lecture,
+  type LectureKind,
+  type Section,
+} from "@/lib/api";
 import { curriculumKey, useCurriculum } from "./use-course";
+import { VideoPanel } from "./video-panel";
 
 type Order = { sections: { id: string; lecture_ids: string[] }[] };
 
@@ -89,6 +100,7 @@ export function CurriculumEditor({ courseId, locked }: { courseId: string; locke
             {section.lectures.map((lecture, lIdx) => (
               <LectureRow
                 key={lecture.id}
+                courseId={courseId}
                 lecture={lecture}
                 index={lIdx}
                 locked={locked}
@@ -142,6 +154,7 @@ function InlineTitle({ value, disabled, onSave }: { value: string; disabled: boo
 }
 
 function LectureRow(props: {
+  courseId: string;
   lecture: Lecture;
   index: number;
   locked: boolean;
@@ -162,6 +175,9 @@ function LectureRow(props: {
         <span aria-hidden>{lecture.kind === "video" ? "▶" : "📄"}</span>
         <InlineTitle value={lecture.title} disabled={locked} onSave={(title) => props.onSave({ title })} />
         {lecture.is_preview && <Badge variant="outline">Preview</Badge>}
+        {lecture.duration_sec > 0 && (
+          <span className="text-xs text-muted-foreground">{formatDuration(lecture.duration_sec)}</span>
+        )}
         {missing && <Badge variant="destructive">{lecture.kind === "video" ? "No video" : "Empty"}</Badge>}
         <div className="ml-auto flex gap-1">
           <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>{open ? "Close" : "Edit"}</Button>
@@ -186,7 +202,7 @@ function LectureRow(props: {
               <Button size="sm" type="submit" disabled={locked}>Save article</Button>
             </form>
           ) : (
-            <p className="text-sm text-muted-foreground">Video upload is coming in the next milestone.</p>
+            <VideoPanel courseId={props.courseId} lecture={lecture} locked={locked} />
           )}
         </div>
       )}

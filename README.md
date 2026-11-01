@@ -5,6 +5,7 @@ Rust (Axum) backend + Next.js frontend, with Bakong KHQR / ABA PayWay payments. 
 
 ## Requirements
 - Rust (stable), Node 24 + pnpm, Docker Desktop
+- ffmpeg (video transcoding): `brew install ffmpeg` / `apt install ffmpeg`
 
 ## Quick start
 
@@ -38,6 +39,13 @@ pnpm dev
 - Verification emails go to Mailpit locally (http://localhost:8025).
 - Make the first admin directly in the database:
   `docker compose exec postgres psql -U reanit reanit_lms -c "UPDATE users SET role='admin' WHERE email='you@example.com'"`
+
+## Video pipeline
+1. Instructor requests an upload URL and uploads the raw file straight to storage.
+2. Attaching it queues a job in `video_assets`; the worker (inside the API process
+   unless `WORKER_ENABLED=false`) transcodes to HLS 360p/720p with ffmpeg.
+3. Playback goes through `GET /api/v1/videos/{asset}/playlist/master.m3u8`; segment
+   URLs are presigned, so the bucket stays private.
 
 ## Tests
 ```bash

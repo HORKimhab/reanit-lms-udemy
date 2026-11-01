@@ -35,6 +35,10 @@ export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 async function rawFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) headers.set("Content-Type", "application/json");
@@ -138,6 +142,17 @@ export type Lecture = {
 };
 
 export type Section = { id: string; title: string; position: number; lectures: Lecture[] };
+
+export type VideoStatus = "uploading" | "processing" | "ready" | "failed";
+export type VideoInfo = { asset_id: string; status: VideoStatus; duration_sec: number; error: string | null };
+
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = String(m).padStart(h ? 2 : 1, "0");
+  return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+}
 
 export type InstructorProfile = { user_id: string; headline: string; bio: string; website: string | null };
 
