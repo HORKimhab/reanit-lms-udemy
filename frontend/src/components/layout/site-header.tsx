@@ -12,7 +12,7 @@ export function SiteHeader() {
         </Link>
         <nav className="hidden md:block">
           <Link href="/courses" className="text-sm text-muted-foreground hover:text-foreground">
-            Categories
+            Browse
           </Link>
         </nav>
         <form action="/courses" className="flex-1">

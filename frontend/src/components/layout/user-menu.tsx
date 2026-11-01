@@ -32,6 +32,11 @@ export function UserMenu() {
 
   return (
     <>
+      {user.role === "admin" && (
+        <Link href="/admin/courses" className="hidden text-sm text-muted-foreground hover:text-foreground md:block">
+          Admin
+        </Link>
+      )}
       <Link href="/my-learning" className="hidden text-sm text-muted-foreground hover:text-foreground md:block">
         My learning
       </Link>

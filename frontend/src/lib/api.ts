@@ -154,6 +154,53 @@ export function formatDuration(seconds: number): string {
   return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
 }
 
+export type Page<T> = { data: T[]; meta: { page: number; per_page: number; total: number } };
+
+export type CourseCard = {
+  id: string;
+  slug: string;
+  title: string;
+  subtitle: string;
+  thumbnail_url: string | null;
+  category_id: string | null;
+  level: Level;
+  language: string;
+  price_minor: number;
+  currency: Currency;
+  instructor_id: string;
+  instructor_name: string;
+  lecture_count: number;
+  duration_sec: number;
+  published_at: string | null;
+};
+
+export type PublicLecture = {
+  id: string;
+  title: string;
+  kind: LectureKind;
+  duration_sec: number;
+  is_preview: boolean;
+  article_body?: string;
+  preview_asset_id?: string;
+};
+
+export type CoursePage = CourseCard & {
+  description: string;
+  outcomes: string[];
+  requirements: string[];
+  instructor: { id: string; name: string; avatar_url: string | null; headline: string; bio: string };
+  curriculum: { id: string; title: string; lectures: PublicLecture[] }[];
+};
+
+export const LEVEL_LABELS: Record<Level, string> = {
+  all: "All levels",
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  expert: "Expert",
+};
+
+export const LANGUAGE_LABELS: Record<string, string> = { en: "English", km: "Khmer" };
+
 export type InstructorProfile = { user_id: string; headline: string; bio: string; website: string | null };
 
 /** Formats a minor-unit amount, e.g. 1999 USD -> "$19.99", 40000 KHR -> "40,000៛". */
