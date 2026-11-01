@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     routing::{delete, get},
 };
@@ -19,6 +19,7 @@ use crate::{
     extract::{ApiJson, ApiPath},
     modules::{
         catalog::{CourseCard, to_cards},
+        coupons::{PricedLine, normalize_codes, price},
         courses::model::{Course, CourseStatus, Currency},
     },
     state::AppState,
@@ -70,8 +71,17 @@ pub struct Total {
 #[derive(Serialize)]
 struct CartView {
     data: Vec<CourseCard>,
-    /// One entry per currency, ordered by currency code.
+    /// Price of each course after coupons.
+    pricing: Vec<PricedLine>,
+    /// One entry per currency, ordered by currency code, after coupons.
     totals: Vec<Total>,
+    invalid_coupons: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct CartQuery {
+    /// Comma-separated coupon codes.
+    coupons: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -107,10 +117,11 @@ pub async fn saved_courses(
         .collect())
 }
 
-pub fn totals(courses: &[Course]) -> Vec<Total> {
+/// Sums amounts per currency, ordered by currency code.
+pub fn totals_of(amounts: impl IntoIterator<Item = (Currency, i64)>) -> Vec<Total> {
     let mut sums: BTreeMap<&'static str, (Currency, i64)> = BTreeMap::new();
-    for c in courses {
-        sums.entry(c.currency.as_str()).or_insert((c.currency, 0)).1 += c.price_minor;
+    for (currency, amount) in amounts {
+        sums.entry(currency.as_str()).or_insert((currency, 0)).1 += amount;
     }
     sums.into_values()
         .map(|(currency, amount_minor)| Total {
@@ -123,12 +134,16 @@ pub fn totals(courses: &[Course]) -> Vec<Total> {
 async fn get_cart(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
+    Query(query): Query<CartQuery>,
 ) -> AppResult<Json<CartView>> {
     let courses = saved_courses(&state, SavedList::Cart, user.id).await?;
-    let totals = totals(&courses);
+    let codes = normalize_codes(query.coupons.as_deref().unwrap_or("").split(','));
+    let pricing = price(&state, &courses, &codes).await?;
     Ok(Json(CartView {
         data: to_cards(&state, courses).await?,
-        totals,
+        pricing: pricing.lines,
+        totals: pricing.totals,
+        invalid_coupons: pricing.invalid_codes,
     }))
 }
 

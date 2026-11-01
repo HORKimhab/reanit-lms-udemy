@@ -5,8 +5,8 @@ use crate::{
     config::Config,
     infra::{clock::Clock, health::HealthProbe, mailer::Mailer, storage::Storage},
     modules::{
-        cart::SavedCourseRepo, categories::CategoryRepo, courses::repo::CourseRepo,
-        curriculum::repo::CurriculumRepo, enrollments::EnrollmentRepo,
+        cart::SavedCourseRepo, categories::CategoryRepo, coupons::CouponRepo,
+        courses::repo::CourseRepo, curriculum::repo::CurriculumRepo, enrollments::EnrollmentRepo,
         instructors::InstructorProfileRepo, users::repo::UserRepo, videos::repo::VideoAssetRepo,
     },
 };
@@ -24,6 +24,7 @@ pub struct AppState {
     pub video_assets: Arc<dyn VideoAssetRepo>,
     pub enrollments: Arc<dyn EnrollmentRepo>,
     pub saved_courses: Arc<dyn SavedCourseRepo>,
+    pub coupons: Arc<dyn CouponRepo>,
     pub refresh_tokens: Arc<dyn RefreshTokenRepo>,
     pub verification_tokens: Arc<dyn VerificationTokenRepo>,
     pub mailer: Arc<dyn Mailer>,

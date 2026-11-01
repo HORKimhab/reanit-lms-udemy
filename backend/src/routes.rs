@@ -28,7 +28,8 @@ pub fn build(state: AppState) -> Router {
             "/instructor",
             modules::courses::router()
                 .merge(modules::curriculum::router())
-                .merge(modules::videos::router()),
+                .merge(modules::videos::router())
+                .merge(modules::coupons::router()),
         );
 
     Router::new()

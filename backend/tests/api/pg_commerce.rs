@@ -85,3 +85,44 @@ async fn cart_and_wishlist_are_separate_newest_first_lists() {
     assert_eq!(store.list(SavedList::Cart, user).await.unwrap(), [a.id]);
     assert_eq!(store.list(SavedList::Wishlist, user).await.unwrap(), [a.id]);
 }
+
+#[tokio::test]
+async fn coupon_codes_are_unique_per_course_and_found_by_code() {
+    use reanit_api::{
+        error::AppError,
+        modules::coupons::{Coupon, CouponRepo},
+    };
+    let Some(store) = store().await else { return };
+    let (_, course) = user_and_course(&store, 1000).await;
+    let coupon = |code: &str| Coupon {
+        id: Uuid::new_v4(),
+        course_id: course.id,
+        code: code.into(),
+        discount_percent: 25,
+        expires_at: Some(now() + Duration::days(1)),
+        max_uses: Some(3),
+        used_count: 0,
+        created_at: now(),
+    };
+    let launch = coupon("LAUNCH");
+    CouponRepo::insert(&store, &launch).await.unwrap();
+    assert!(matches!(
+        CouponRepo::insert(&store, &coupon("LAUNCH")).await,
+        Err(AppError::Conflict(_))
+    ));
+
+    let found = store
+        .find_for(&[course.id], &["LAUNCH".into(), "OTHER".into()])
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].expires_at, launch.expires_at);
+    assert_eq!(found[0].max_uses, Some(3));
+
+    assert!(
+        CouponRepo::delete(&store, course.id, launch.id)
+            .await
+            .unwrap()
+    );
+    assert!(store.list_by_course(course.id).await.unwrap().is_empty());
+}

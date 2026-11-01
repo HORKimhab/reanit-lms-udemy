@@ -717,6 +717,7 @@ impl TestApp {
             video_assets: video_assets.clone(),
             enrollments: Arc::new(MemEnrollments::default()),
             saved_courses: Arc::new(MemSavedCourses::default()),
+            coupons: Arc::new(MemCoupons::default()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),

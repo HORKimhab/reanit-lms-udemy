@@ -3,6 +3,7 @@ pub mod auth;
 pub mod cart;
 pub mod catalog;
 pub mod categories;
+pub mod coupons;
 pub mod courses;
 pub mod curriculum;
 pub mod enrollments;

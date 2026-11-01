@@ -6,9 +6,10 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reanit_api::{
-    error::AppResult,
+    error::{AppError, AppResult},
     modules::{
         cart::{SavedCourseRepo, SavedList},
+        coupons::{Coupon, CouponRepo},
         enrollments::{Enrollment, EnrollmentRepo},
     },
 };
@@ -91,5 +92,52 @@ impl SavedCourseRepo for MemSavedCourses {
             .filter(|(l, u, _)| *l == list && *u == user_id)
             .map(|(_, _, c)| *c)
             .collect())
+    }
+}
+
+#[derive(Default)]
+pub struct MemCoupons(pub Mutex<Vec<Coupon>>);
+
+#[async_trait]
+impl CouponRepo for MemCoupons {
+    async fn insert(&self, c: &Coupon) -> AppResult<()> {
+        let mut all = self.0.lock().unwrap();
+        if all
+            .iter()
+            .any(|x| x.course_id == c.course_id && x.code == c.code)
+        {
+            return Err(AppError::Conflict("duplicate code".into()));
+        }
+        all.insert(0, c.clone());
+        Ok(())
+    }
+
+    async fn list_by_course(&self, course_id: Uuid) -> AppResult<Vec<Coupon>> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.course_id == course_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_for(&self, course_ids: &[Uuid], codes: &[String]) -> AppResult<Vec<Coupon>> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| course_ids.contains(&c.course_id) && codes.contains(&c.code))
+            .cloned()
+            .collect())
+    }
+
+    async fn delete(&self, course_id: Uuid, id: Uuid) -> AppResult<bool> {
+        let mut all = self.0.lock().unwrap();
+        let before = all.len();
+        all.retain(|c| !(c.id == id && c.course_id == course_id));
+        Ok(all.len() < before)
     }
 }
