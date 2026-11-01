@@ -25,7 +25,10 @@ use reanit_api::{
     },
     modules::{
         categories::{Category, CategoryRepo},
-        courses::{model::Course, repo::CourseRepo},
+        courses::{
+            model::{Course, CourseStatus},
+            repo::CourseRepo,
+        },
         curriculum::{
             model::{Lecture, Section},
             repo::{CurriculumRepo, SectionOrder},
@@ -322,6 +325,16 @@ impl CourseRepo for MemCourses {
     async fn delete(&self, id: Uuid) -> AppResult<()> {
         self.0.lock().unwrap().retain(|c| c.id != id);
         Ok(())
+    }
+    async fn list_by_status(&self, status: CourseStatus) -> AppResult<Vec<Course>> {
+        let courses = self.0.lock().unwrap();
+        let mut found: Vec<_> = courses
+            .iter()
+            .filter(|c| c.status == status)
+            .cloned()
+            .collect();
+        found.sort_by_key(|c| c.updated_at);
+        Ok(found)
     }
 }
 

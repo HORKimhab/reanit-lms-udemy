@@ -2,7 +2,7 @@ use crate::common::TestApp;
 use axum::http::{Method, StatusCode};
 use serde_json::json;
 
-async fn setup() -> (TestApp, String, String) {
+pub async fn setup() -> (TestApp, String, String) {
     let app = TestApp::new();
     let token = app.instructor("dara@example.com").await;
     let res = app
@@ -18,7 +18,7 @@ async fn setup() -> (TestApp, String, String) {
 }
 
 /// Fills in everything a course needs to be submitted.
-async fn complete(app: &TestApp, token: &str, base: &str) {
+pub async fn complete(app: &TestApp, token: &str, base: &str) {
     let patch = app
         .send(
             Method::PATCH,
@@ -75,7 +75,7 @@ async fn complete(app: &TestApp, token: &str, base: &str) {
     .await;
 }
 
-async fn submit(app: &TestApp, token: &str, base: &str) -> crate::common::TestResponse {
+pub async fn submit(app: &TestApp, token: &str, base: &str) -> crate::common::TestResponse {
     app.send(Method::POST, &format!("{base}/submit"), None, token)
         .await
 }

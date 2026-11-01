@@ -529,6 +529,18 @@ impl CourseRepo for PgStore {
             .await?;
         Ok(())
     }
+
+    async fn list_by_status(&self, status: CourseStatus) -> AppResult<Vec<Course>> {
+        let rows: Vec<CourseRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            course_columns!(),
+            " FROM courses WHERE status = $1 ORDER BY updated_at"
+        ))
+        .bind(status.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Course::try_from).collect()
+    }
 }
 
 #[derive(FromRow)]
