@@ -20,9 +20,13 @@ use reanit_api::{
         health::HealthProbe,
         mailer::{Email, Mailer},
     },
-    modules::users::{
-        model::{NewUser, Role, User},
-        repo::UserRepo,
+    modules::{
+        categories::{Category, CategoryRepo},
+        instructors::{InstructorProfile, InstructorProfileRepo},
+        users::{
+            model::{NewUser, Role, User},
+            repo::UserRepo,
+        },
     },
     routes,
     state::AppState,
@@ -229,6 +233,50 @@ impl Clock for FakeClock {
     }
 }
 
+pub struct MemCategories(Vec<Category>);
+
+impl Default for MemCategories {
+    fn default() -> Self {
+        let cat = |name: &str, slug: &str| Category {
+            id: Uuid::new_v4(),
+            parent_id: None,
+            name: name.into(),
+            slug: slug.into(),
+        };
+        Self(vec![
+            cat("Web Development", "web-development"),
+            cat("Data Science", "data-science"),
+        ])
+    }
+}
+
+#[async_trait]
+impl CategoryRepo for MemCategories {
+    async fn list(&self) -> AppResult<Vec<Category>> {
+        Ok(self.0.clone())
+    }
+    async fn find(&self, id: Uuid) -> AppResult<Option<Category>> {
+        Ok(self.0.iter().find(|c| c.id == id).cloned())
+    }
+}
+
+#[derive(Default)]
+pub struct MemInstructorProfiles(Mutex<Vec<InstructorProfile>>);
+
+#[async_trait]
+impl InstructorProfileRepo for MemInstructorProfiles {
+    async fn find(&self, user_id: Uuid) -> AppResult<Option<InstructorProfile>> {
+        let profiles = self.0.lock().unwrap();
+        Ok(profiles.iter().find(|p| p.user_id == user_id).cloned())
+    }
+    async fn upsert(&self, profile: InstructorProfile) -> AppResult<InstructorProfile> {
+        let mut profiles = self.0.lock().unwrap();
+        profiles.retain(|p| p.user_id != profile.user_id);
+        profiles.push(profile.clone());
+        Ok(profile)
+    }
+}
+
 struct OkProbe;
 
 #[async_trait]
@@ -243,6 +291,7 @@ impl HealthProbe for OkProbe {
 pub struct TestApp {
     router: Router,
     pub users: Arc<MemUsers>,
+    pub categories: Arc<MemCategories>,
     pub mailer: Arc<CapturingMailer>,
     pub clock: Arc<FakeClock>,
 }
@@ -305,6 +354,7 @@ pub fn test_config() -> Config {
 impl TestApp {
     pub fn new() -> Self {
         let users = Arc::new(MemUsers::default());
+        let categories = Arc::new(MemCategories::default());
         let mailer = Arc::new(CapturingMailer::default());
         let clock = Arc::new(FakeClock(Mutex::new(
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
@@ -312,6 +362,8 @@ impl TestApp {
         let state = AppState {
             config: Arc::new(test_config()),
             users: users.clone(),
+            categories: categories.clone(),
+            instructor_profiles: Arc::new(MemInstructorProfiles::default()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),
@@ -321,6 +373,7 @@ impl TestApp {
         Self {
             router: routes::build(state),
             users,
+            categories,
             mailer,
             clock,
         }

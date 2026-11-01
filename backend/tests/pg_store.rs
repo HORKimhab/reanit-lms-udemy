@@ -11,6 +11,10 @@ use reanit_api::{
         model::{NewUser, Role},
         repo::UserRepo,
     },
+    modules::{
+        categories::CategoryRepo,
+        instructors::{InstructorProfile, InstructorProfileRepo},
+    },
 };
 use uuid::Uuid;
 
@@ -191,4 +195,48 @@ async fn verification_tokens_are_single_use_and_expire() {
             .unwrap(),
         None
     );
+}
+
+#[tokio::test]
+async fn seeded_categories_are_listed_in_order() {
+    let Some(store) = store().await else { return };
+    let categories = store.list().await.unwrap();
+    assert_eq!(categories[0].slug, "web-development");
+    let found = CategoryRepo::find(&store, categories[0].id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.name, "Web Development");
+}
+
+#[tokio::test]
+async fn instructor_profiles_upsert() {
+    let Some(store) = store().await else { return };
+    let user = store
+        .create(new_user(&unique_email()), now())
+        .await
+        .unwrap();
+    assert!(
+        InstructorProfileRepo::find(&store, user.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let mut profile = InstructorProfile {
+        user_id: user.id,
+        headline: "Rust dev".into(),
+        bio: String::new(),
+        website: None,
+    };
+    store.upsert(profile.clone()).await.unwrap();
+    profile.website = Some("https://dara.dev".into());
+    let saved = store.upsert(profile).await.unwrap();
+
+    assert_eq!(saved.website.as_deref(), Some("https://dara.dev"));
+    let found = InstructorProfileRepo::find(&store, user.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.headline, "Rust dev");
 }

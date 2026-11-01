@@ -47,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         config: Arc::new(config),
         users: store.clone(),
+        categories: store.clone(),
+        instructor_profiles: store.clone(),
         refresh_tokens: store.clone(),
         verification_tokens: store,
         mailer,

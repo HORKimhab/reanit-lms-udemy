@@ -10,7 +10,7 @@ async fn become_instructor(app: &TestApp, token: &str) -> common::TestResponse {
     app.request(
         Method::POST,
         "/me/become-instructor",
-        None,
+        Some(json!({ "headline": "Rust developer" })),
         Some(token),
         None,
     )

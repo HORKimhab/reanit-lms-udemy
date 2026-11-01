@@ -4,7 +4,9 @@ use crate::{
     auth::store::{RefreshTokenRepo, VerificationTokenRepo},
     config::Config,
     infra::{clock::Clock, health::HealthProbe, mailer::Mailer},
-    modules::users::repo::UserRepo,
+    modules::{
+        categories::CategoryRepo, instructors::InstructorProfileRepo, users::repo::UserRepo,
+    },
 };
 
 /// Everything handlers depend on. Infrastructure sits behind traits so the
@@ -13,6 +15,8 @@ use crate::{
 pub struct AppState {
     pub config: Arc<Config>,
     pub users: Arc<dyn UserRepo>,
+    pub categories: Arc<dyn CategoryRepo>,
+    pub instructor_profiles: Arc<dyn InstructorProfileRepo>,
     pub refresh_tokens: Arc<dyn RefreshTokenRepo>,
     pub verification_tokens: Arc<dyn VerificationTokenRepo>,
     pub mailer: Arc<dyn Mailer>,

@@ -8,9 +8,13 @@ use uuid::Uuid;
 use crate::{
     auth::store::{RefreshToken, RefreshTokenRepo, VerificationTokenRepo},
     error::{AppError, AppResult},
-    modules::users::{
-        model::{NewUser, Role, User},
-        repo::UserRepo,
+    modules::{
+        categories::{Category, CategoryRepo},
+        instructors::{InstructorProfile, InstructorProfileRepo},
+        users::{
+            model::{NewUser, Role, User},
+            repo::UserRepo,
+        },
     },
 };
 
@@ -267,5 +271,94 @@ impl VerificationTokenRepo for PgStore {
         .fetch_optional(&self.pool)
         .await?;
         Ok(user_id)
+    }
+}
+
+#[derive(FromRow)]
+struct CategoryRow {
+    id: Uuid,
+    parent_id: Option<Uuid>,
+    name: String,
+    slug: String,
+}
+
+impl From<CategoryRow> for Category {
+    fn from(r: CategoryRow) -> Self {
+        Category {
+            id: r.id,
+            parent_id: r.parent_id,
+            name: r.name,
+            slug: r.slug,
+        }
+    }
+}
+
+#[async_trait]
+impl CategoryRepo for PgStore {
+    async fn list(&self) -> AppResult<Vec<Category>> {
+        let rows: Vec<CategoryRow> = sqlx::query_as(
+            "SELECT id, parent_id, name, slug FROM categories ORDER BY position, name",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn find(&self, id: Uuid) -> AppResult<Option<Category>> {
+        let row: Option<CategoryRow> =
+            sqlx::query_as("SELECT id, parent_id, name, slug FROM categories WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(Into::into))
+    }
+}
+
+#[derive(FromRow)]
+struct InstructorProfileRow {
+    user_id: Uuid,
+    headline: String,
+    bio: String,
+    website: Option<String>,
+}
+
+impl From<InstructorProfileRow> for InstructorProfile {
+    fn from(r: InstructorProfileRow) -> Self {
+        InstructorProfile {
+            user_id: r.user_id,
+            headline: r.headline,
+            bio: r.bio,
+            website: r.website,
+        }
+    }
+}
+
+#[async_trait]
+impl InstructorProfileRepo for PgStore {
+    async fn find(&self, user_id: Uuid) -> AppResult<Option<InstructorProfile>> {
+        let row: Option<InstructorProfileRow> = sqlx::query_as(
+            "SELECT user_id, headline, bio, website FROM instructor_profiles WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn upsert(&self, p: InstructorProfile) -> AppResult<InstructorProfile> {
+        let row: InstructorProfileRow = sqlx::query_as(
+            "INSERT INTO instructor_profiles (user_id, headline, bio, website)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (user_id) DO UPDATE
+                SET headline = EXCLUDED.headline, bio = EXCLUDED.bio, website = EXCLUDED.website
+             RETURNING user_id, headline, bio, website",
+        )
+        .bind(p.user_id)
+        .bind(&p.headline)
+        .bind(&p.bio)
+        .bind(&p.website)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.into())
     }
 }
