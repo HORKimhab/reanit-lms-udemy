@@ -8,6 +8,7 @@ mod courses_api;
 mod curriculum_api;
 mod instructor_api;
 mod pg_store;
+mod playback_api;
 mod roles_api;
 mod storage_presign;
 mod submit_api;

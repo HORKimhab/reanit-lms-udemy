@@ -521,6 +521,12 @@ pub struct TestApp {
     pub clock: Arc<FakeClock>,
 }
 
+pub struct RawResponse {
+    pub status: StatusCode,
+    pub headers: axum::http::HeaderMap,
+    pub text: String,
+}
+
 pub struct TestResponse {
     pub status: StatusCode,
     pub headers: axum::http::HeaderMap,
@@ -743,6 +749,30 @@ impl TestApp {
         let user = self.users.find_by_email(email).await.unwrap().unwrap();
         self.users.set_role(user.id, Role::Admin).await.unwrap();
         token
+    }
+
+    /// GET returning the raw text body (for non-JSON responses like playlists).
+    pub async fn get_raw(&self, path: &str, bearer: Option<&str>) -> RawResponse {
+        let mut req = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/api/v1{path}"));
+        if let Some(token) = bearer {
+            req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        let res = self
+            .router
+            .clone()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        RawResponse {
+            status,
+            headers,
+            text: String::from_utf8_lossy(&bytes).into_owned(),
+        }
     }
 
     pub fn video_worker(&self, transcoder: Arc<dyn Transcoder>) -> VideoWorker {
