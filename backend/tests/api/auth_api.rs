@@ -1,7 +1,6 @@
-mod common;
 
 use axum::http::StatusCode;
-use common::TestApp;
+use crate::common::TestApp;
 
 #[tokio::test]
 async fn register_creates_student_signs_in_and_sends_verification_email() {
@@ -242,7 +241,7 @@ async fn resend_verification_is_refused_once_already_verified() {
     assert_eq!(res.status, StatusCode::CONFLICT);
 }
 
-async fn refresh(app: &TestApp, cookie: &str) -> common::TestResponse {
+async fn refresh(app: &TestApp, cookie: &str) -> crate::common::TestResponse {
     app.request(
         axum::http::Method::POST,
         "/auth/refresh",
@@ -404,7 +403,7 @@ async fn replaying_a_logged_out_refresh_token_does_not_end_other_sessions() {
     assert_eq!(refresh(&app, &phone).await.status, StatusCode::OK);
 }
 
-async fn resend(app: &TestApp, token: &str) -> common::TestResponse {
+async fn resend(app: &TestApp, token: &str) -> crate::common::TestResponse {
     app.request(
         axum::http::Method::POST,
         "/auth/resend-verification",

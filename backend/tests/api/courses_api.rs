@@ -1,7 +1,6 @@
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{TestApp, TestResponse};
+use crate::common::{TestApp, TestResponse};
 use serde_json::{Value, json};
 
 async fn create_course(app: &TestApp, token: &str, body: Value) -> TestResponse {

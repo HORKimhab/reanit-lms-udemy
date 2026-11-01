@@ -42,7 +42,7 @@ pnpm dev
 ## Tests
 ```bash
 cd backend && cargo test   # HTTP API tests run in-memory, no Docker needed
-DATABASE_URL=postgres://reanit:reanit@localhost:5432/reanit_lms cargo test --test pg_store   # Postgres adapter tests
+DATABASE_URL=postgres://reanit:reanit@localhost:5432/reanit_lms cargo test --test api pg_store   # Postgres adapter tests
 ```
 
 ## Layout

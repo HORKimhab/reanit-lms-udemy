@@ -1,7 +1,6 @@
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::TestApp;
+use crate::common::TestApp;
 use serde_json::{Value, json};
 
 struct Ctx {
@@ -26,7 +25,7 @@ async fn setup() -> Ctx {
 }
 
 impl Ctx {
-    async fn call(&self, method: Method, path: &str, body: Option<Value>) -> common::TestResponse {
+    async fn call(&self, method: Method, path: &str, body: Option<Value>) -> crate::common::TestResponse {
         self.app
             .send(method, &format!("{}{path}", self.base), body, &self.token)
             .await

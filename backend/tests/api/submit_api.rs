@@ -1,7 +1,6 @@
-mod common;
 
 use axum::http::{Method, StatusCode};
-use common::TestApp;
+use crate::common::TestApp;
 use serde_json::json;
 
 async fn setup() -> (TestApp, String, String) {
@@ -77,7 +76,7 @@ async fn complete(app: &TestApp, token: &str, base: &str) {
     .await;
 }
 
-async fn submit(app: &TestApp, token: &str, base: &str) -> common::TestResponse {
+async fn submit(app: &TestApp, token: &str, base: &str) -> crate::common::TestResponse {
     app.send(Method::POST, &format!("{base}/submit"), None, token)
         .await
 }
