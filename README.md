@@ -31,6 +31,20 @@ pnpm dev
 | MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
 | Mailpit inbox | http://localhost:8025 |
 
+## Auth
+- `POST /api/v1/auth/register | login | refresh | logout | verify-email | resend-verification`, `GET /api/v1/auth/me`
+- Short-lived JWT access token (memory only on the client) + rotating refresh token in an httpOnly cookie.
+  Replaying an already-rotated refresh token revokes all of that user's sessions.
+- Verification emails go to Mailpit locally (http://localhost:8025).
+- Make the first admin directly in the database:
+  `docker compose exec postgres psql -U reanit reanit_lms -c "UPDATE users SET role='admin' WHERE email='you@example.com'"`
+
+## Tests
+```bash
+cd backend && cargo test   # HTTP API tests run in-memory, no Docker needed
+DATABASE_URL=postgres://reanit:reanit@localhost:5432/reanit_lms cargo test --test pg_store   # Postgres adapter tests
+```
+
 ## Layout
 - `backend/` — Axum API. Feature modules in `src/modules/`, SQL migrations in `migrations/` (run automatically on startup).
 - `frontend/` — Next.js App Router + Tailwind + shadcn/ui + TanStack Query.

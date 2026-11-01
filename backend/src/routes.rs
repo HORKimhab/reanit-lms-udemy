@@ -16,7 +16,11 @@ pub fn build(state: AppState) -> Router {
         .allow_methods(tower_http::cors::AllowMethods::mirror_request())
         .allow_headers(tower_http::cors::AllowHeaders::mirror_request());
 
-    let api = Router::new().merge(modules::health::router());
+    let api = Router::new()
+        .merge(modules::health::router())
+        .nest("/auth", modules::auth::router())
+        .nest("/me", modules::me::router())
+        .nest("/admin", modules::admin::router());
 
     Router::new()
         .nest("/api/v1", api)

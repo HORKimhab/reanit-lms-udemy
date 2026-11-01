@@ -8,9 +8,6 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn health(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    sqlx::query("SELECT 1").execute(&state.db).await?;
-    let mut redis = state.redis.clone();
-    let _: String = redis::cmd("PING").query_async(&mut redis).await?;
-
-    Ok(Json(json!({ "status": "ok", "db": "ok", "redis": "ok" })))
+    state.health.check().await?;
+    Ok(Json(json!({ "status": "ok" })))
 }

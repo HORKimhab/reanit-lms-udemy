@@ -1,14 +1,14 @@
-mod config;
-mod error;
-mod modules;
-mod routes;
-mod state;
+use std::sync::Arc;
 
 use anyhow::Context;
+use reanit_api::{
+    config::Config,
+    infra::{clock::SystemClock, health::PgRedisProbe, mailer::SmtpMailer, postgres::PgStore},
+    routes,
+    state::AppState,
+};
 use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-
-use crate::{config::Config, state::AppState};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,8 +40,19 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to connect to Redis")?;
 
+    let store = Arc::new(PgStore::new(db.clone()));
+    let mailer = Arc::new(SmtpMailer::new(&config.smtp)?);
     let addr = format!("{}:{}", config.host, config.port);
-    let state = AppState { config, db, redis };
+
+    let state = AppState {
+        config: Arc::new(config),
+        users: store.clone(),
+        refresh_tokens: store.clone(),
+        verification_tokens: store,
+        mailer,
+        clock: Arc::new(SystemClock),
+        health: Arc::new(PgRedisProbe { db, redis }),
+    };
     let app = routes::build(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

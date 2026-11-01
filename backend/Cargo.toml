@@ -5,12 +5,22 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-axum = "0.8.9"
+argon2 = "0.6.0"
+async-trait = "0.1.92"
+axum = { version = "0.8.9", features = ["macros"] }
+axum-extra = { version = "0.12.6", features = ["cookie"] }
+base64 = "0.23.1"
 chrono = { version = "0.4.45", features = ["serde"] }
+cookie = "0.18"
 dotenvy = "0.15.7"
+hex = "0.4.3"
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["rust_crypto"] }
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
+rand = "0.10.3"
 redis = { version = "1.8.1", features = ["tokio-comp", "connection-manager"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "migrate", "macros"] }
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["full"] }
@@ -18,3 +28,18 @@ tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.29.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }
+
+# Argon2 is unusably slow unoptimized; keep dev/test builds fast.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
+# Smaller build output: line tables are enough for backtraces.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false

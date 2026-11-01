@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { VerifyEmailBanner } from "@/components/auth/verify-email-banner";
+import { UserMenu } from "./user-menu";
 
 export function SiteHeader() {
   return (
@@ -20,13 +21,9 @@ export function SiteHeader() {
         <Link href="/teach" className="hidden text-sm text-muted-foreground hover:text-foreground md:block">
           Teach on ReanIT
         </Link>
-        <Link href="/login" className={buttonVariants({ variant: "outline" })}>
-          Log in
-        </Link>
-        <Link href="/register" className={buttonVariants()}>
-          Sign up
-        </Link>
+        <UserMenu />
       </div>
+      <VerifyEmailBanner />
     </header>
   );
 }
