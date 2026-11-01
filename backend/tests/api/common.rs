@@ -622,6 +622,7 @@ pub struct TestApp {
     pub video_assets: Arc<MemVideoAssets>,
     pub mailer: Arc<CapturingMailer>,
     pub clock: Arc<FakeClock>,
+    pub payments: FakePayments,
 }
 
 pub struct RawResponse {
@@ -707,6 +708,10 @@ impl TestApp {
         let clock = Arc::new(FakeClock(Mutex::new(
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         )));
+        let enrollments = Arc::new(MemEnrollments::default());
+        let saved = Arc::new(MemSavedCourses::default());
+        let coupons = Arc::new(MemCoupons::default());
+        let payments = FakePayments::default();
         let state = AppState {
             config: Arc::new(config),
             users: users.clone(),
@@ -715,9 +720,18 @@ impl TestApp {
             courses: Arc::new(MemCourses::default()),
             curriculum: Arc::new(MemCurriculum::default()),
             video_assets: video_assets.clone(),
-            enrollments: Arc::new(MemEnrollments::default()),
-            saved_courses: Arc::new(MemSavedCourses::default()),
-            coupons: Arc::new(MemCoupons::default()),
+            enrollments: enrollments.clone(),
+            saved_courses: saved.clone(),
+            coupons: coupons.clone(),
+            orders: Arc::new(MemOrders {
+                orders: Mutex::default(),
+                payments: Mutex::default(),
+                enrollments: enrollments.clone(),
+                saved: saved.clone(),
+                coupons,
+            }),
+            payment_methods: Arc::new(MemPaymentMethods::default()),
+            payment_providers: Arc::new(payments.clone()),
             refresh_tokens: Arc::new(MemRefreshTokens::default()),
             verification_tokens: Arc::new(MemVerificationTokens::default()),
             mailer: mailer.clone(),
@@ -734,6 +748,7 @@ impl TestApp {
             video_assets,
             mailer,
             clock,
+            payments,
         }
     }
 

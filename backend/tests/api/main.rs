@@ -7,6 +7,7 @@ mod mem_commerce;
 mod auth_api;
 mod cart_api;
 mod catalog_api;
+mod checkout_api;
 mod coupon_api;
 mod courses_api;
 mod curriculum_api;

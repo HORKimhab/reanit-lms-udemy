@@ -21,9 +21,14 @@ pub fn build(state: AppState) -> Router {
         .merge(modules::categories::router())
         .merge(modules::catalog::router())
         .merge(modules::videos::playback::router())
+        .merge(modules::payments::handlers::router())
+        .merge(modules::payments::methods::router())
         .nest("/auth", modules::auth::router())
         .nest("/me", modules::me::router())
-        .nest("/admin", modules::admin::router())
+        .nest(
+            "/admin",
+            modules::admin::router().merge(modules::payments::methods::admin_router()),
+        )
         .nest(
             "/instructor",
             modules::courses::router()

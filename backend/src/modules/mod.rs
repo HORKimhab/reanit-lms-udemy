@@ -10,5 +10,6 @@ pub mod enrollments;
 pub mod health;
 pub mod instructors;
 pub mod me;
+pub mod payments;
 pub mod users;
 pub mod videos;
