@@ -16,6 +16,8 @@ dotenvy = "0.15.7"
 hex = "0.4.3"
 hmac = "0.13.0"
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["rust_crypto"] }
+md-5 = "0.11.0"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
 rand = "0.10.3"
 redis = { version = "1.8.1", features = ["tokio-comp", "connection-manager"] }
