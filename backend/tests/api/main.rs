@@ -14,3 +14,4 @@ mod submit_api;
 mod thumbnail_api;
 mod transcoder;
 mod video_api;
+mod video_worker;

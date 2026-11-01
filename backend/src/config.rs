@@ -17,6 +17,9 @@ pub struct Config {
     pub cookie_secure: bool,
     pub smtp: SmtpConfig,
     pub s3: S3Config,
+    /// Run the video transcoding worker inside this process.
+    pub worker_enabled: bool,
+    pub worker_scratch_dir: String,
 }
 
 #[derive(Clone, Debug)]
@@ -93,6 +96,13 @@ impl Config {
                 public_url: var_or("S3_PUBLIC_URL", "http://localhost:9000/reanit-media"),
                 path_style: parse_or("S3_PATH_STYLE", true)?,
             },
+            worker_enabled: parse_or("WORKER_ENABLED", true)?,
+            worker_scratch_dir: std::env::var("WORKER_SCRATCH_DIR").unwrap_or_else(|_| {
+                std::env::temp_dir()
+                    .join("reanit-worker")
+                    .to_string_lossy()
+                    .into_owned()
+            }),
         })
     }
 }

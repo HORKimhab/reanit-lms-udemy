@@ -97,6 +97,15 @@ impl Storage {
 
     /// URL the browser can `PUT` the object to until it expires.
     pub fn presign_put(&self, key: &str, now: DateTime<Utc>, expires_secs: u32) -> String {
+        self.presign("PUT", key, now, expires_secs)
+    }
+
+    /// URL to `GET` a private object until it expires.
+    pub fn presign_get(&self, key: &str, now: DateTime<Utc>, expires_secs: u32) -> String {
+        self.presign("GET", key, now, expires_secs)
+    }
+
+    fn presign(&self, method: &str, key: &str, now: DateTime<Utc>, expires_secs: u32) -> String {
         let c = &self.config;
         let (scheme, host) = c
             .endpoint
@@ -109,7 +118,7 @@ impl Storage {
             (format!("{}.{host}", c.bucket), format!("/{key}"))
         };
         presign_url(&PresignRequest {
-            method: "PUT",
+            method,
             scheme,
             host: &host,
             path: &path,

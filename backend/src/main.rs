@@ -4,11 +4,12 @@ use anyhow::Context;
 use reanit_api::{
     config::Config,
     infra::{
-        clock::SystemClock, health::PgRedisProbe, mailer::SmtpMailer, postgres::PgStore,
-        storage::Storage,
+        clock::SystemClock, health::PgRedisProbe, mailer::SmtpMailer, objects::S3ObjectStore,
+        postgres::PgStore, storage::Storage, transcoder::FfmpegTranscoder,
     },
     routes,
     state::AppState,
+    worker::VideoWorker,
 };
 use sqlx::postgres::PgPoolOptions;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -24,6 +25,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // reqwest and lettre both use rustls; pick the ring crypto backend once.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| anyhow::anyhow!("failed to install TLS crypto provider"))?;
 
     let config = Config::from_env()?;
 
@@ -63,6 +69,19 @@ async fn main() -> anyhow::Result<()> {
         health: Arc::new(PgRedisProbe { db, redis }),
         storage,
     };
+    if state.config.worker_enabled {
+        let worker = VideoWorker {
+            objects: Arc::new(S3ObjectStore::new(
+                state.storage.clone(),
+                state.clock.clone(),
+            )),
+            transcoder: Arc::new(FfmpegTranscoder::default()),
+            scratch_dir: state.config.worker_scratch_dir.clone().into(),
+            state: state.clone(),
+        };
+        tokio::spawn(worker.run_forever());
+        tracing::info!("video worker started");
+    }
     let app = routes::build(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

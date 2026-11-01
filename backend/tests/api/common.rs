@@ -19,7 +19,9 @@ use reanit_api::{
         clock::Clock,
         health::HealthProbe,
         mailer::{Email, Mailer},
+        objects::ObjectStore,
         storage::Storage,
+        transcoder::Transcoder,
     },
     modules::{
         categories::{Category, CategoryRepo},
@@ -40,6 +42,7 @@ use reanit_api::{
     },
     routes,
     state::AppState,
+    worker::VideoWorker,
 };
 use serde_json::Value;
 use tower::ServiceExt;
@@ -468,6 +471,34 @@ impl VideoAssetRepo for MemVideoAssets {
     }
 }
 
+/// In-memory object storage.
+#[derive(Default)]
+pub struct MemObjects(Mutex<std::collections::HashMap<String, Vec<u8>>>);
+
+impl MemObjects {
+    pub fn put(&self, key: &str, bytes: Vec<u8>) {
+        self.0.lock().unwrap().insert(key.to_string(), bytes);
+    }
+    pub fn get(&self, key: &str) -> Option<Vec<u8>> {
+        self.0.lock().unwrap().get(key).cloned()
+    }
+}
+
+#[async_trait]
+impl ObjectStore for MemObjects {
+    async fn download(&self, key: &str, dest: &std::path::Path) -> anyhow::Result<()> {
+        let bytes = self
+            .get(key)
+            .ok_or_else(|| anyhow::anyhow!("no such object: {key}"))?;
+        tokio::fs::write(dest, bytes).await?;
+        Ok(())
+    }
+    async fn upload(&self, src: &std::path::Path, key: &str, _ct: &str) -> anyhow::Result<()> {
+        self.put(key, tokio::fs::read(src).await?);
+        Ok(())
+    }
+}
+
 struct OkProbe;
 
 #[async_trait]
@@ -481,6 +512,8 @@ impl HealthProbe for OkProbe {
 
 pub struct TestApp {
     router: Router,
+    pub state: AppState,
+    pub objects: Arc<MemObjects>,
     pub users: Arc<MemUsers>,
     pub categories: Arc<MemCategories>,
     pub video_assets: Arc<MemVideoAssets>,
@@ -549,6 +582,8 @@ pub fn test_config() -> Config {
             public_url: "http://cdn.test/reanit-media".into(),
             path_style: true,
         },
+        worker_enabled: false,
+        worker_scratch_dir: String::new(),
     }
 }
 
@@ -579,7 +614,9 @@ impl TestApp {
             storage,
         };
         Self {
-            router: routes::build(state),
+            router: routes::build(state.clone()),
+            state,
+            objects: Arc::new(MemObjects::default()),
             users,
             categories,
             video_assets,
@@ -706,6 +743,15 @@ impl TestApp {
         let user = self.users.find_by_email(email).await.unwrap().unwrap();
         self.users.set_role(user.id, Role::Admin).await.unwrap();
         token
+    }
+
+    pub fn video_worker(&self, transcoder: Arc<dyn Transcoder>) -> VideoWorker {
+        VideoWorker {
+            state: self.state.clone(),
+            objects: self.objects.clone(),
+            transcoder,
+            scratch_dir: std::env::temp_dir().join(format!("reanit-test-{}", Uuid::new_v4())),
+        }
     }
 
     pub fn category_id(&self) -> String {
