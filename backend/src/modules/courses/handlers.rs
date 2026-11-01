@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
             post(thumbnail_upload_url),
         )
         .route("/courses/{id}/thumbnail", put(set_thumbnail))
+        .route("/courses/{id}/submit", post(super::submission::submit))
 }
 
 const UPLOAD_URL_TTL_SECS: u32 = 900;
