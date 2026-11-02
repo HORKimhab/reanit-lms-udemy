@@ -17,6 +17,7 @@ mod khqr;
 mod pg_commerce;
 mod pg_store;
 mod playback_api;
+mod provider_adapters;
 mod review_api;
 mod roles_api;
 mod storage_presign;

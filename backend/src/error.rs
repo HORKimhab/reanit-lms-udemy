@@ -20,6 +20,9 @@ pub enum AppError {
     Conflict(String),
     #[error("{0}")]
     TooManyRequests(String),
+    /// A third-party service (payment provider) failed or refused.
+    #[error("{0}")]
+    Upstream(String),
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -37,12 +40,17 @@ impl IntoResponse for AppError {
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             AppError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
+            AppError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream_error"),
             AppError::Database(_) | AppError::Redis(_) | AppError::Internal(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
             }
         };
 
-        let message = if status.is_server_error() {
+        let message = if let AppError::Upstream(detail) = &self {
+            tracing::error!(%detail, "upstream service error");
+            "The payment provider couldn't be reached. Please try again or pick another method."
+                .to_string()
+        } else if status.is_server_error() {
             tracing::error!(error = ?self, "internal error");
             "Something went wrong".to_string()
         } else {
