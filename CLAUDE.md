@@ -11,6 +11,10 @@ CI (`.github/workflows/ci.yml`) runs these; run the ones for the side you touche
 
 `cargo test` needs no Docker: the HTTP API tests run in-memory. Postgres adapter tests (`pg_store`, `pg_commerce`) pass trivially unless `DATABASE_URL` is set — after changing SQL or migrations, run them for real with `docker compose up -d` and `DATABASE_URL=postgres://reanit:reanit@localhost:5432/reanit_lms cargo test --test api pg_`.
 
+## Commit and push every finished subtask
+
+Once a subtask's checks pass, commit just that subtask's files directly to `main` and `git push` — one commit per subtask, no feature branches. Write a one-line message in the style of the existing history (e.g. "Cart and wishlist with per-currency totals"). The repo is public on GitHub, so keep `.env` files and real provider keys out of commits.
+
 ## Backend architecture
 
 - **Ports and adapters.** Every handler dependency is a trait object on `AppState` (`src/state.rs`). Each repo trait lives in its module (`modules/<x>/repo.rs` or `mod.rs`); the Postgres impl lives on `PgStore` in `src/infra/postgres.rs` (commerce tables in `infra/postgres/commerce.rs`); the in-memory impl lives in `tests/api/common.rs` / `tests/api/mem_commerce.rs`. Adding or changing a repo method means updating **all three**, plus wiring in `src/main.rs` and `TestApp` in `tests/api/common.rs`.
