@@ -50,7 +50,8 @@ pnpm dev
 ## Payment worker
 Also inside the API process (same `WORKER_ENABLED` switch): every 5 s it re-checks
 pending payments with their provider, settling confirmed ones into enrollments and
-expiring QR codes / checkout sessions past their deadline.
+expiring QR codes / checkout sessions past their deadline. Orders left unpaid for
+24 h with no payment in progress become `expired` (the cart is kept; check out again).
 
 ## Tests
 ```bash

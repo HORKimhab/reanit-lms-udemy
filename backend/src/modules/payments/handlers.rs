@@ -307,8 +307,16 @@ async fn start_payment(
     ApiJson(input): ApiJson<StartPayment>,
 ) -> AppResult<(StatusCode, Json<PaymentView>)> {
     let order = load_own_order(&state, &user, order_id).await?;
-    if order.status == OrderStatus::Paid {
-        return Err(AppError::Conflict("this order is already paid".into()));
+    match order.status {
+        OrderStatus::Pending => {}
+        OrderStatus::Paid => {
+            return Err(AppError::Conflict("this order is already paid".into()));
+        }
+        OrderStatus::Expired => {
+            return Err(AppError::Conflict(
+                "this order has expired; check out again".into(),
+            ));
+        }
     }
     let method = usable_methods(&state, order.currency)
         .await?

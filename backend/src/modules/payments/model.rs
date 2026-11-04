@@ -32,8 +32,10 @@ pub(crate) use text_enum;
 pub enum OrderStatus {
     Pending,
     Paid,
+    /// Left unpaid too long; check out again to buy.
+    Expired,
 }
-text_enum!(OrderStatus { Pending => "pending", Paid => "paid" });
+text_enum!(OrderStatus { Pending => "pending", Paid => "paid", Expired => "expired" });
 
 #[derive(Clone, Debug, Serialize)]
 pub struct OrderItem {

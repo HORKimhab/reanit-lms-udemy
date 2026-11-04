@@ -33,6 +33,10 @@ pub trait OrderRepo: Send + Sync {
         at: DateTime<Utc>,
     ) -> AppResult<bool>;
 
+    /// Expires pending orders created before `created_before` that have no
+    /// pending payment. Returns how many were expired.
+    async fn expire_stale_orders(&self, created_before: DateTime<Utc>) -> AppResult<u64>;
+
     async fn insert_payment(&self, payment: &Payment) -> AppResult<()>;
     async fn find_payment_by_reference(
         &self,

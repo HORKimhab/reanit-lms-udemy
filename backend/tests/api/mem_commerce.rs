@@ -274,6 +274,23 @@ impl OrderRepo for MemOrders {
             .collect())
     }
 
+    async fn expire_stale_orders(&self, created_before: DateTime<Utc>) -> AppResult<u64> {
+        let payments = self.payments.lock().unwrap();
+        let mut orders = self.orders.lock().unwrap();
+        let mut expired = 0;
+        for order in orders.iter_mut().filter(|o| {
+            o.status == OrderStatus::Pending
+                && o.created_at < created_before
+                && !payments
+                    .iter()
+                    .any(|p| p.order_id == o.id && p.status == PaymentStatus::Pending)
+        }) {
+            order.status = OrderStatus::Expired;
+            expired += 1;
+        }
+        Ok(expired)
+    }
+
     async fn list_pending_payments(&self, limit: i64) -> AppResult<Vec<Payment>> {
         let mut pending: Vec<Payment> = self
             .payments

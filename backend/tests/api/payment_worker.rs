@@ -1,9 +1,9 @@
 //! The background payment worker: polls providers and expires stale payments.
 
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode};
 use chrono::Duration;
 use reanit_api::modules::{courses::model::Currency, payments::provider::ProviderKind};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::enrollment_api::{Shop, shop};
 
@@ -58,4 +58,54 @@ async fn the_worker_expires_an_unpaid_payment_past_its_deadline() {
     assert_eq!(worker.run_once().await.unwrap(), 0);
     assert_eq!(s.stored_order(&order).await["status"], "pending");
     assert!(s.my_courses().await["data"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_worker_expires_orders_left_unpaid_for_a_day() {
+    let mut s = shop().await;
+    let (course, order) = s.pending_order(2000).await;
+
+    s.app.clock.advance(Duration::hours(25));
+    s.app.payment_worker().run_once().await.unwrap();
+    s.student = s
+        .app
+        .login("student@example.com", "correct horse battery")
+        .await
+        .access_token();
+
+    assert_eq!(s.stored_order(&order).await["status"], "expired");
+    let res = s.pay(&order, "bakong_khqr").await;
+    assert_eq!(res.status, StatusCode::CONFLICT, "{:?}", res.body);
+    // The cart is untouched, so the student can simply check out again.
+    assert_eq!(s.list("cart").await["data"][0]["id"], course);
+    let again = s
+        .app
+        .send(
+            Method::POST,
+            "/orders",
+            Some(json!({ "currency": "USD" })),
+            &s.student,
+        )
+        .await;
+    assert_eq!(again.status, StatusCode::CREATED, "{:?}", again.body);
+}
+
+#[tokio::test]
+async fn an_old_order_with_a_payment_in_progress_is_not_expired() {
+    let mut s = shop().await;
+    let (_, order) = s.pending_order(2000).await;
+    s.app
+        .clock
+        .advance(Duration::hours(24) - Duration::minutes(4));
+    s.student = s
+        .app
+        .login("student@example.com", "correct horse battery")
+        .await
+        .access_token();
+    s.pay(&order, "bakong_khqr").await;
+
+    s.app.clock.advance(Duration::minutes(5));
+    s.app.payment_worker().run_once().await.unwrap();
+
+    assert_eq!(s.stored_order(&order).await["status"], "pending");
 }

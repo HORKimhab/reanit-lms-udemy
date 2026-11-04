@@ -366,3 +366,73 @@ async fn payment_methods_are_seeded_and_patchable() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn stale_orders_expire_unless_a_payment_is_in_progress() {
+    use reanit_api::modules::{
+        courses::model::Currency,
+        payments::{
+            model::{Order, OrderStatus, Payment, PaymentAction, PaymentStatus},
+            provider::ProviderKind,
+            repo::OrderRepo,
+        },
+    };
+    let Some(store) = store().await else { return };
+    let (buyer, _) = user_and_course(&store, 100).await;
+    let long_ago = now() - Duration::days(2);
+    let order = |created_at| Order {
+        id: Uuid::new_v4(),
+        user_id: buyer,
+        status: OrderStatus::Pending,
+        currency: Currency::Usd,
+        subtotal_minor: 100,
+        total_minor: 100,
+        items: vec![],
+        created_at,
+        paid_at: None,
+    };
+    let abandoned = order(long_ago);
+    let paying = order(long_ago);
+    let fresh = order(now());
+    for o in [&abandoned, &paying, &fresh] {
+        store.insert_order(o).await.unwrap();
+    }
+    store
+        .insert_payment(&Payment {
+            id: Uuid::new_v4(),
+            order_id: paying.id,
+            method: "bakong_khqr".into(),
+            provider: ProviderKind::Bakong,
+            amount_minor: 100,
+            currency: Currency::Usd,
+            status: PaymentStatus::Pending,
+            reference: format!("md5-{}", Uuid::new_v4()),
+            provider_tran_id: None,
+            action: PaymentAction::Qr {
+                qr_string: "000201".into(),
+                deeplink: None,
+            },
+            failure_reason: None,
+            raw_response: None,
+            expires_at: now() + Duration::minutes(10),
+            last_checked_at: None,
+            created_at: now(),
+            paid_at: None,
+        })
+        .await
+        .unwrap();
+
+    let expired = store
+        .expire_stale_orders(now() - Duration::days(1))
+        .await
+        .unwrap();
+
+    assert!(expired >= 1);
+    let status = |id| {
+        let store = &store;
+        async move { store.find_order(id).await.unwrap().unwrap().status }
+    };
+    assert_eq!(status(abandoned.id).await, OrderStatus::Expired);
+    assert_eq!(status(paying.id).await, OrderStatus::Pending);
+    assert_eq!(status(fresh.id).await, OrderStatus::Pending);
+}

@@ -54,7 +54,7 @@ Legend: `[x]` done · `[ ]` to do
 - [x] ABA PayWay pushback webhook
 - [x] Receipt email on settlement
 - [x] Background worker: poll pending Bakong payments until paid/expired
-- [ ] Background worker: expire stale orders and payments
+- [x] Background worker: expire stale orders and payments
 
 ### Frontend
 - [ ] Cart page (items, coupon input, per-currency totals)

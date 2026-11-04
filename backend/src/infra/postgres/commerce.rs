@@ -538,6 +538,19 @@ impl OrderRepo for PgStore {
         rows.into_iter().map(Payment::try_from).collect()
     }
 
+    async fn expire_stale_orders(&self, created_before: DateTime<Utc>) -> AppResult<u64> {
+        let done = sqlx::query(
+            "UPDATE orders o SET status = 'expired' \
+             WHERE o.status = 'pending' AND o.created_at < $1 \
+             AND NOT EXISTS (SELECT 1 FROM payments p \
+                             WHERE p.order_id = o.id AND p.status = 'pending')",
+        )
+        .bind(created_before)
+        .execute(&self.pool)
+        .await?;
+        Ok(done.rows_affected())
+    }
+
     async fn list_pending_payments(&self, limit: i64) -> AppResult<Vec<Payment>> {
         let rows: Vec<PaymentRow> = sqlx::query_as(concat!(
             "SELECT ",
