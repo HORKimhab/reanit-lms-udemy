@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { useCart } from "@/lib/commerce";
 
 export function UserMenu() {
   const { user, loading, logout } = useAuth();
@@ -40,6 +41,7 @@ export function UserMenu() {
       <Link href="/my-learning" className="hidden text-sm text-muted-foreground hover:text-foreground md:block">
         My learning
       </Link>
+      <CartLink />
       <div className="flex items-center gap-2">
         <span
           title={`${user.name} (${user.role})`}
@@ -71,6 +73,21 @@ export function TeachLink() {
       className="hidden text-sm text-muted-foreground hover:text-foreground md:block"
     >
       {isInstructor ? "Instructor" : "Teach on ReanIT"}
+    </Link>
+  );
+}
+
+function CartLink() {
+  const cart = useCart();
+  const count = cart.data?.data.length ?? 0;
+  return (
+    <Link href="/cart" className="relative text-sm text-muted-foreground hover:text-foreground" aria-label={`Cart (${count})`}>
+      Cart
+      {count > 0 && (
+        <span className="absolute -top-2 -right-3 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+          {count}
+        </span>
+      )}
     </Link>
   );
 }

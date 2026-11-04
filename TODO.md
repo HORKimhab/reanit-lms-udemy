@@ -57,7 +57,7 @@ Legend: `[x]` done · `[ ]` to do
 - [x] Background worker: expire stale orders and payments
 
 ### Frontend
-- [ ] Cart page (items, coupon input, per-currency totals)
+- [x] Cart page (items, coupon input, per-currency totals)
 - [ ] Wishlist page and add/remove buttons on course cards and landing page
 - [ ] Checkout page: payment methods loaded from `/payments/methods`
 - [ ] Payment screen: KHQR image + countdown, ABA redirect / deeplink
