@@ -8,6 +8,7 @@ use reanit_api::{
         postgres::PgStore, storage::Storage, transcoder::FfmpegTranscoder,
     },
     modules::payments::provider::ConfiguredProviders,
+    modules::payments::worker::PaymentWorker,
     routes,
     state::AppState,
     worker::VideoWorker,
@@ -88,6 +89,13 @@ async fn main() -> anyhow::Result<()> {
         };
         tokio::spawn(worker.run_forever());
         tracing::info!("video worker started");
+        tokio::spawn(
+            PaymentWorker {
+                state: state.clone(),
+            }
+            .run_forever(),
+        );
+        tracing::info!("payment worker started");
     }
     let app = routes::build(state);
 

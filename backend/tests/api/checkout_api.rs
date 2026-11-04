@@ -20,7 +20,7 @@ impl Shop {
             .await
     }
 
-    async fn pay(&self, order_id: &str, method: &str) -> TestResponse {
+    pub(crate) async fn pay(&self, order_id: &str, method: &str) -> TestResponse {
         self.app
             .send(
                 Method::POST,
@@ -58,7 +58,7 @@ impl Shop {
     }
 
     /// A paid course in the student's cart plus a pending order for it.
-    async fn pending_order(&self, price_minor: i64) -> (String, String) {
+    pub(crate) async fn pending_order(&self, price_minor: i64) -> (String, String) {
         let course = self
             .course("Rust", json!({ "price_minor": price_minor }))
             .await;

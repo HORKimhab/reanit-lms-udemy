@@ -14,6 +14,7 @@ mod curriculum_api;
 mod enrollment_api;
 mod instructor_api;
 mod khqr;
+mod payment_worker;
 mod pg_commerce;
 mod pg_store;
 mod playback_api;

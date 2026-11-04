@@ -47,6 +47,11 @@ pnpm dev
 3. Playback goes through `GET /api/v1/videos/{asset}/playlist/master.m3u8`; segment
    URLs are presigned, so the bucket stays private.
 
+## Payment worker
+Also inside the API process (same `WORKER_ENABLED` switch): every 5 s it re-checks
+pending payments with their provider, settling confirmed ones into enrollments and
+expiring QR codes / checkout sessions past their deadline.
+
 ## Tests
 ```bash
 cd backend && cargo test   # HTTP API tests run in-memory, no Docker needed

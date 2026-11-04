@@ -53,7 +53,7 @@ Legend: `[x]` done · `[ ]` to do
 - [x] Bakong and ABA PayWay provider adapters with upstream error handling
 - [x] ABA PayWay pushback webhook
 - [x] Receipt email on settlement
-- [ ] Background worker: poll pending Bakong payments until paid/expired
+- [x] Background worker: poll pending Bakong payments until paid/expired
 - [ ] Background worker: expire stale orders and payments
 
 ### Frontend

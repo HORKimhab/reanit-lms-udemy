@@ -23,6 +23,7 @@ use reanit_api::{
         storage::Storage,
         transcoder::Transcoder,
     },
+    modules::payments::worker::PaymentWorker,
     modules::{
         categories::{Category, CategoryRepo},
         courses::{
@@ -902,6 +903,12 @@ impl TestApp {
             objects: self.objects.clone(),
             transcoder,
             scratch_dir: std::env::temp_dir().join(format!("reanit-test-{}", Uuid::new_v4())),
+        }
+    }
+
+    pub fn payment_worker(&self) -> PaymentWorker {
+        PaymentWorker {
+            state: self.state.clone(),
         }
     }
 
